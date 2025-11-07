@@ -121,15 +121,10 @@ function setupTabs() {
             this.classList.add('active');
             document.getElementById(tabName + 'Tab').classList.add('active');
             
-            // Carregar conteúdo específico da aba
+            // SEMPRE recarregar amigos quando mudar para aba de amigos
             if (tabName === 'friends') {
-                console.log('🔁 Alternando para aba Amigos');
-                // Usar cache se disponível, senão recarregar
-                if (friendsListLoaded) {
-                    renderFriendsFromCache();
-                } else {
-                    loadFriendsList();
-                }
+                console.log('🔁 Alternando para aba Amigos - Carregando lista...');
+                loadFriendsList();
             } else if (tabName === 'search') {
                 setupSearch();
             } else if (tabName === 'requests') {
@@ -198,88 +193,130 @@ function updateFriendsCache() {
 function setupFirebaseListeners() {
     console.log('📡 Configurando listeners do Firebase...');
     
-    // Listener para amigos (com cache)
-    updateFriendsCache();
+    // Listener para amizades - recarrega sempre que houver mudança
+    database.ref('friendships').orderByChild('status').equalTo('accepted').on('value', (snapshot) => {
+        console.log('🔄 Amizades atualizadas, recarregando lista...');
+        loadFriendsList();
+    });
     
-    // Listener para solicitações de amizade
-    database.ref('friend_requests').orderByChild('to').equalTo(currentUser.id).on('value', snapshot => {
+    // Manter os outros listeners originais
+    database.ref('friend_requests').orderByChild('to').equalTo(currentUser.id).on('value', (snapshot) => {
         loadFriendRequests(snapshot);
     });
     
-    // Listener para status online dos usuários (atualiza cache)
-    database.ref('users').on('value', snapshot => {
+    database.ref('users').on('value', (snapshot) => {
         updateUsersStatus(snapshot);
     });
 }
 
 // ========== SISTEMA DE AMIGOS ==========
-let friendsCache = {}; // Cache de amigos
-let friendsListLoaded = false; // Flag para saber se já carregou
+let friendsCache = {};
+let friendsListLoaded = false;
 
-function loadFriendsList(snapshot = null) {
+function loadFriendsList() {
+    const friendsList = document.getElementById('friendsList');
+    console.log('🔄 Carregando lista de amigos...');
+    
+    friendsList.innerHTML = '<div class="loading">Carregando amigos...</div>';
+
+    // Buscar TODAS as amizades do banco
+    database.ref('friendships').once('value')
+        .then(snapshot => {
+            if (!snapshot.exists()) {
+                friendsList.innerHTML = '<div class="info-message">Você ainda não tem amigos</div>';
+                return;
+            }
+
+            const friendships = snapshot.val();
+            const friendUsernames = [];
+
+            // Procurar amizades onde o usuário atual está envolvido
+            Object.keys(friendships).forEach(friendshipId => {
+                const friendship = friendships[friendshipId];
+                
+                // Verificar se é uma amizade aceita do usuário atual
+                if (friendship.status === 'accepted') {
+                    if (friendship.user1 === currentUser.id) {
+                        friendUsernames.push(friendship.user2);
+                    } else if (friendship.user2 === currentUser.id) {
+                        friendUsernames.push(friendship.user1);
+                    }
+                }
+            });
+
+            console.log(`👥 Amigos encontrados: ${friendUsernames.length}`, friendUsernames);
+
+            if (friendUsernames.length === 0) {
+                friendsList.innerHTML = '<div class="info-message">Você ainda não tem amigos</div>';
+                return;
+            }
+
+            // Buscar informações de cada amigo
+            const promises = friendUsernames.map(username => {
+                return database.ref('users/' + username).once('value');
+            });
+
+            return Promise.all(promises);
+        })
+        .then(snapshots => {
+            if (!snapshots) return;
+
+            const friendsList = document.getElementById('friendsList');
+            friendsList.innerHTML = '';
+
+            snapshots.forEach(snapshot => {
+                if (snapshot.exists()) {
+                    const friend = snapshot.val();
+                    addFriendToDisplay(friend);
+                }
+            });
+
+            if (friendsList.children.length === 0) {
+                friendsList.innerHTML = '<div class="info-message">Nenhum amigo carregado</div>';
+            } else {
+                console.log(`✅ ${friendsList.children.length} amigos exibidos na lista`);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erro ao carregar amigos:', error);
+            friendsList.innerHTML = '<div class="info-message">Erro ao carregar amigos</div>';
+        });
+}
+
+// Função auxiliar para adicionar amigo na lista
+// Função auxiliar para adicionar amigo na lista (CORRIGIDA)
+function addFriendToDisplay(friend) {
     const friendsList = document.getElementById('friendsList');
     
-    console.log('👥 Carregando lista de amigos...', friendsListLoaded ? '(Usando cache)' : '(Carregando do Firebase)');
-    
-    // Se já temos os amigos em cache e é apenas uma mudança de aba, usar cache
-    if (friendsListLoaded && Object.keys(friendsCache).length > 0) {
-        console.log('⚡ Renderizando do cache...');
-        renderFriendsFromCache();
-        return;
+    // Verificar se os dados do amigo são válidos
+    if (!friend || !friend.username || !friend.displayName) {
+        console.warn('❌ Dados inválidos do amigo:', friend);
+        return; // Não adiciona se dados estiverem incompletos
     }
     
-    if (!snapshot || !snapshot.exists()) {
-        friendsList.innerHTML = '<div class="info-message">Você ainda não tem amigos</div>';
-        friendsListLoaded = true;
-        return;
-    }
+    const friendItem = document.createElement('div');
+    friendItem.className = 'user-item';
+    friendItem.onclick = () => startChat(friend.username, friend.displayName);
     
-    const friendships = snapshot.val();
-    const friendUsernames = [];
+    // Garantir que temos valores válidos
+    const displayName = friend.displayName || 'Usuário';
+    const username = friend.username || 'desconhecido';
+    const isOnline = friend.isOnline || false;
+    const lastSeen = friend.lastSeen || Date.now();
     
-    // Coletar usernames dos amigos
-    Object.keys(friendships).forEach(friendshipId => {
-        const friendship = friendships[friendshipId];
-        if (friendship.user1 === currentUser.id) {
-            friendUsernames.push(friendship.user2);
-        } else if (friendship.user2 === currentUser.id) {
-            friendUsernames.push(friendship.user1);
-        }
-    });
+    friendItem.innerHTML = `
+        <div class="user-avatar-small">${displayName.charAt(0).toUpperCase()}</div>
+        <div class="user-details">
+            <div class="user-name">${displayName}</div>
+            <div class="user-username">@${username}</div>
+            <div class="user-status ${isOnline ? 'status-online' : 'status-offline'}">
+                <span class="status-dot"></span>
+                ${isOnline ? 'Online' : 'Último visto ' + formatLastSeen(lastSeen)}
+            </div>
+        </div>
+    `;
     
-    if (friendUsernames.length === 0) {
-        friendsList.innerHTML = '<div class="info-message">Você ainda não tem amigos</div>';
-        friendsListLoaded = true;
-        return;
-    }
-    
-    // Buscar dados dos amigos
-    friendsList.innerHTML = '<div class="loading">Carregando amigos...</div>';
-    
-    const friendsPromises = friendUsernames.map(username => {
-        return database.ref('users/' + username).once('value');
-    });
-    
-    Promise.all(friendsPromises).then(snapshots => {
-        friendsCache = {}; // Limpar cache
-        friendsList.innerHTML = '';
-        
-        snapshots.forEach(snapshot => {
-            if (snapshot.exists()) {
-                const friend = snapshot.val();
-                friendsCache[friend.username] = friend;
-                addFriendToList(friend);
-            }
-        });
-        
-        friendsListLoaded = true;
-        
-        if (friendsList.children.length === 0) {
-            friendsList.innerHTML = '<div class="info-message">Nenhum amigo encontrado</div>';
-        } else {
-            console.log(`✅ ${Object.keys(friendsCache).length} amigos carregados no cache`);
-        }
-    });
+    friendsList.appendChild(friendItem);
 }
 
 // Renderizar amigos do cache
@@ -1949,4 +1986,63 @@ function atualizarPainelEspaco(tamanhoMB) {
     
     // Atualizar texto
     spaceText.textContent = `${tamanhoMB.toFixed(1)}MB / 1024MB (${percentual.toFixed(1)}%)`;
+}
+
+function forcarAtualizacaoAmigos() {
+    console.log('🔄 Forçando atualização da lista de amigos...');
+    
+    // Limpar cache
+    friendsCache = {};
+    friendsListLoaded = false;
+    
+    // Recarregar lista
+    loadFriendsList();
+    
+    // Mostrar feedback
+    showNotification('Lista de amigos atualizada!');
+}
+
+// Adicione um botão de atualização temporário (remova depois)
+function adicionarBotaoAtualizacao() {
+    const friendsTab = document.getElementById('friendsTab');
+    if (!friendsTab) return;
+    
+    const botaoAtualizacao = document.createElement('button');
+    botaoAtualizacao.textContent = '🔄 Atualizar Lista';
+    botaoAtualizacao.className = 'btn-small btn-primary';
+    botaoAtualizacao.style.margin = '10px';
+    botaoAtualizacao.onclick = forcarAtualizacaoAmigos;
+    
+    friendsTab.insertBefore(botaoAtualizacao, friendsTab.firstChild);
+}
+
+function debugAmizades() {
+    console.log('=== DEBUG AMIZADES ===');
+    console.log('👤 Usuário atual:', currentUser.id);
+    
+    database.ref('friendships').once('value')
+        .then(snapshot => {
+            if (!snapshot.exists()) {
+                console.log('❌ NÃO EXISTEM AMIZADES NO BANCO');
+                return;
+            }
+            
+            const friendships = snapshot.val();
+            console.log('🤝 TODAS as amizades:', friendships);
+            
+            // Filtrar só as do usuário atual
+            const minhasAmizades = [];
+            Object.keys(friendships).forEach(id => {
+                const f = friendships[id];
+                if ((f.user1 === currentUser.id || f.user2 === currentUser.id) && f.status === 'accepted') {
+                    minhasAmizades.push(f);
+                }
+            });
+            
+            console.log(`⭐ MINHAS AMIZADES (${minhasAmizades.length}):`, minhasAmizades);
+            
+            if (minhasAmizades.length === 0) {
+                console.log('❌ Nenhuma amizade encontrada para o usuário atual');
+            }
+        });
 }
