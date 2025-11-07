@@ -353,3 +353,104 @@ body {
 [data-theme="dark"] .form-footer p {
     color: #a0aec0;
 }
+
+/* ========== RESPONSIVIDADE MOBILE - LOGIN ========== */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+        align-items: flex-start;
+        min-height: 100vh;
+        background: var(--bg-primary);
+    }
+    
+    .container {
+        max-width: 100%;
+        height: auto;
+        min-height: 100vh;
+    }
+    
+    .auth-screen {
+        border-radius: 0;
+        box-shadow: none;
+        min-height: 100vh;
+        padding: 30px 20px;
+    }
+    
+    .welcome-screen {
+        padding: 40px 20px;
+    }
+    
+    .form-screen {
+        padding: 30px 20px;
+    }
+    
+    .logo-icon {
+        font-size: 50px;
+        margin-bottom: 15px;
+    }
+    
+    .logo h1 {
+        font-size: 2em;
+    }
+    
+    .logo p {
+        font-size: 1em;
+    }
+    
+    .welcome-buttons {
+        gap: 12px;
+    }
+    
+    .btn-large {
+        padding: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-screen {
+        padding: 20px 15px;
+    }
+    
+    .welcome-screen {
+        padding: 30px 15px;
+    }
+    
+    .form-screen {
+        padding: 25px 15px;
+    }
+    
+    .logo h1 {
+        font-size: 1.8em;
+    }
+    
+    .form-header h2 {
+        font-size: 1.5em;
+    }
+    
+    .form-group input {
+        padding: 14px;
+    }
+    
+    .success-screen {
+        padding: 40px 20px;
+    }
+    
+    .success-icon {
+        font-size: 60px;
+    }
+}
+
+/* Melhorias para touch no login */
+@media (hover: none) and (pointer: coarse) {
+    .btn {
+        min-height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .form-group input {
+        min-height: 50px;
+        font-size: 16px; /* Prevenir zoom no iOS */
+    }
+}

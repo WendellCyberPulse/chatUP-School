@@ -4,11 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChatUP - Conversas</title>
-    <link rel="stylesheet" href="./styles/chat.css">
+    <link rel="stylesheet" href="styles/chat.css">
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
 </head>
 <body>
+
+    <!-- Menu Mobile -->
+<div class="mobile-header" id="mobileHeader" style="display: none;">
+    <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+    <div class="mobile-chat-info" id="mobileChatInfo">
+        <div class="mobile-user-avatar" id="mobileChatAvatar">U</div>
+        <div class="mobile-user-info">
+            <div class="mobile-user-name" id="mobileChatName">Usuário</div>
+            <div class="mobile-user-status" id="mobileChatStatus">Online</div>
+        </div>
+    </div>
+    <button class="mobile-back-btn" onclick="showFriendsList()" id="mobileBackBtn" style="display: none;">
+        ← Voltar
+    </button>
+</div>
+
+<div class="mobile-overlay" id="mobileOverlay" onclick="toggleMobileMenu()"></div>
     <div class="container">
         <!-- Sidebar -->
         <div class="sidebar">
@@ -122,8 +143,7 @@
         </div>
     </div>
 
-    <script src="./js/config.js"></script>
-    <script src="./js/chat.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/chat.js"></script>
 </body>
-
 </html>

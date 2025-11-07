@@ -52,6 +52,8 @@ function initChat() {
     console.log('🚀 Iniciando chat...');
 
     initTheme();
+
+    initResponsive();
     
     // Verificar se usuário está logado
     const savedUser = sessionStorage.getItem('currentUser');
@@ -1501,4 +1503,141 @@ function debugSolicitacoes() {
     loadFriendRequests();
 }
 
-// Chame esta função no console: debugSolicitacoes()
+// ========== RESPONSIVIDADE MOBILE ==========
+
+// Detectar se é mobile
+function isMobile() {
+    return window.innerWidth <= 768;
+}
+
+// Toggle do menu mobile
+function toggleMobileMenu() {
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('mobileOverlay');
+    
+    if (sidebar.classList.contains('mobile-open')) {
+        sidebar.classList.remove('mobile-open');
+        overlay.style.display = 'none';
+        document.body.style.overflow = 'auto';
+    } else {
+        sidebar.classList.add('mobile-open');
+        overlay.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+// Mostrar lista de amigos (voltar do chat)
+function showFriendsList() {
+    if (!isMobile()) return;
+    
+    // Esconder header do chat
+    document.getElementById('noChatSelected').style.display = 'block';
+    document.getElementById('activeChatHeader').style.display = 'none';
+    document.getElementById('chatInput').style.display = 'none';
+    
+    // Mostrar botão de menu
+    document.getElementById('mobileChatInfo').style.display = 'flex';
+    document.getElementById('mobileBackBtn').style.display = 'none';
+    
+    // Limpar chat atual
+    currentChat = null;
+    
+    // Limpar mensagens
+    document.getElementById('chatMessages').innerHTML = `
+        <div class="welcome-message">
+            <p>Selecione uma conversa para começar</p>
+        </div>
+    `;
+    
+    // Fechar menu se estiver aberto
+    toggleMobileMenu();
+}
+
+// Atualizar header mobile quando inicia um chat
+function updateMobileHeader() {
+    if (!isMobile() || !currentChat) return;
+    
+    const mobileChatAvatar = document.getElementById('mobileChatAvatar');
+    const mobileChatName = document.getElementById('mobileChatName');
+    const mobileChatStatus = document.getElementById('mobileChatStatus');
+    const mobileBackBtn = document.getElementById('mobileBackBtn');
+    const mobileChatInfo = document.getElementById('mobileChatInfo');
+    
+    if (mobileChatAvatar) mobileChatAvatar.textContent = currentChat.name.charAt(0).toUpperCase();
+    if (mobileChatName) mobileChatName.textContent = currentChat.name;
+    if (mobileChatStatus) {
+        const friend = friendsCache[currentChat.id];
+        mobileChatStatus.textContent = friend && friend.isOnline ? 'Online' : 'Offline';
+        mobileChatStatus.className = `mobile-user-status ${friend && friend.isOnline ? 'status-online' : 'status-offline'}`;
+    }
+    
+    // Mostrar botão voltar e esconder info do chat
+    mobileBackBtn.style.display = 'block';
+    mobileChatInfo.style.display = 'none';
+}
+
+// Inicializar responsividade
+function initResponsive() {
+    const mobileHeader = document.getElementById('mobileHeader');
+    
+    if (isMobile()) {
+        mobileHeader.style.display = 'flex';
+        // Fechar menu mobile ao clicar em um amigo
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.user-item') && document.querySelector('.sidebar.mobile-open')) {
+                toggleMobileMenu();
+            }
+        });
+    } else {
+        mobileHeader.style.display = 'none';
+    }
+    
+    // Listeners para redimensionamento
+    window.addEventListener('resize', function() {
+        if (isMobile()) {
+            mobileHeader.style.display = 'flex';
+        } else {
+            mobileHeader.style.display = 'none';
+            // Garantir que sidebar esteja visível em desktop
+            document.querySelector('.sidebar').classList.remove('mobile-open');
+            document.getElementById('mobileOverlay').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+    });
+}
+
+// Atualizar a função startChat para mobile
+function startChat(username, displayName) {
+    console.log('💬 Iniciando chat com:', displayName, username);
+    
+    currentChat = {
+        id: username,
+        name: displayName
+    };
+
+    // Atualizar interface
+    document.getElementById('noChatSelected').style.display = 'none';
+    document.getElementById('activeChatHeader').style.display = 'flex';
+    document.getElementById('activeChatName').textContent = displayName;
+    document.getElementById('activeChatAvatar').textContent = displayName.charAt(0).toUpperCase();
+    
+    // Atualizar status
+    const friend = friendsCache[username];
+    document.getElementById('activeChatStatus').textContent = friend && friend.isOnline ? 'Online' : 'Offline';
+    document.getElementById('activeChatStatus').className = `user-status ${friend && friend.isOnline ? 'status-online' : 'status-offline'}`;
+    
+    // Mostrar área de input
+    document.getElementById('chatInput').style.display = 'flex';
+    
+    // Atualizar header mobile
+    updateMobileHeader();
+    
+    // Carregar mensagens
+    loadChatMessages();
+    
+    // Configurar listener de typing para este chat
+    setupTypingListener();
+    
+    // Focar no input
+    document.getElementById('messageInput').focus();
+}
