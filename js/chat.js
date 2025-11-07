@@ -386,8 +386,9 @@ function searchUsers() {
     
     searchResults.innerHTML = '<div class="loading">Buscando usuários...</div>';
     
-    // Buscar TODOS os usuários primeiro
-    database.ref('users').once('value')
+    // Buscar usuários com regras mais específicas
+    database.ref('users').orderByChild('username').startAt(searchTerm).endAt(searchTerm + '\uf8ff')
+        .once('value')
         .then(snapshot => {
             searchResults.innerHTML = '';
             
@@ -402,10 +403,8 @@ function searchUsers() {
             Object.keys(users).forEach(username => {
                 const user = users[username];
                 
-                // Não mostrar o usuário atual e filtrar por searchTerm
-                if (username !== currentUser.id && 
-                    (user.username.includes(searchTerm) || 
-                     user.displayName.toLowerCase().includes(searchTerm))) {
+                // Não mostrar o usuário atual
+                if (username !== currentUser.id) {
                     foundUsers = true;
                     addUserToSearchResults(user);
                 }
@@ -417,7 +416,47 @@ function searchUsers() {
         })
         .catch(error => {
             console.error('Erro na busca:', error);
-            searchResults.innerHTML = '<div class="info-message">Erro ao buscar usuários</div>';
+            
+            // Fallback: buscar todos e filtrar localmente
+            fallbackSearch(searchTerm);
+        });
+}
+
+// Fallback para quando as regras não permitem busca por range
+function fallbackSearch(searchTerm) {
+    database.ref('users').once('value')
+        .then(snapshot => {
+            const searchResults = document.getElementById('searchResults');
+            searchResults.innerHTML = '';
+            
+            if (!snapshot.exists()) {
+                searchResults.innerHTML = '<div class="info-message">Nenhum usuário encontrado</div>';
+                return;
+            }
+            
+            const users = snapshot.val();
+            let foundUsers = false;
+            
+            Object.keys(users).forEach(username => {
+                const user = users[username];
+                
+                // Filtrar localmente
+                if (username !== currentUser.id && 
+                    (user.username.toLowerCase().includes(searchTerm) || 
+                     user.displayName.toLowerCase().includes(searchTerm))) {
+                    foundUsers = true;
+                    addUserToSearchResults(user);
+                }
+            });
+            
+            if (!foundUsers) {
+                searchResults.innerHTML = '<div class="info-message">Nenhum usuário encontrado</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Erro no fallback search:', error);
+            document.getElementById('searchResults').innerHTML = 
+                '<div class="info-message">Erro ao buscar usuários</div>';
         });
 }
 
@@ -1673,37 +1712,50 @@ function configurarMonitoramentoEspaco() {
 function verificarEspacoEAjustar() {
     console.log('🔍 Verificando espaço usado...');
     
-    database.ref().once('value')
-        .then(snapshot => {
-            if (!snapshot.exists()) return;
-
-            
-            // Calcular tamanho aproximado
-            const dataString = JSON.stringify(snapshot.val());
-            const tamanhoBytes = new Blob([dataString]).size;
-            const tamanhoMB = tamanhoBytes / 1024 / 1024;
-            
-            console.log(`📈 Espaço usado: ${tamanhoMB.toFixed(2)} MB`);
-
-            atualizarPainelEspaco(tamanhoMB);
-            
-            // Verificar se precisa limpar
-            if (tamanhoMB >= LIMITE_CRITICO) {
-                console.warn('🚨 LIMITE CRÍTICO! Iniciando limpeza URGENTE...');
-                executarLimpezaUrgente();
-            } else if (tamanhoMB >= LIMITE_SEGURO) {
-                console.warn('⚠️  Limite seguro atingido! Iniciando limpeza preventiva...');
-                executarLimpezaPreventiva();
-            } else {
-                console.log(`✅ Espaço dentro do limite. Livre: ${(1024 - tamanhoMB).toFixed(2)} MB`);
-            }
-            
-            // Mostrar status no console
-            console.log(`🎯 Status: ${tamanhoMB.toFixed(2)}MB / 1024MB (${((tamanhoMB / 1024) * 100).toFixed(1)}%)`);
-        })
-        .catch(error => {
-            console.error('❌ Erro ao verificar espaço:', error);
-        });
+    // Verificar apenas os dados que temos permissão para acessar
+    Promise.all([
+        database.ref('users').once('value'),
+        database.ref('chats').once('value'),
+        database.ref('friend_requests').once('value'),
+        database.ref('friendships').once('value')
+    ])
+    .then(([usersSnapshot, chatsSnapshot, requestsSnapshot, friendshipsSnapshot]) => {
+        let totalSize = 0;
+        
+        // Calcular tamanho aproximado de cada parte
+        if (usersSnapshot.exists()) {
+            totalSize += new Blob([JSON.stringify(usersSnapshot.val())]).size;
+        }
+        if (chatsSnapshot.exists()) {
+            totalSize += new Blob([JSON.stringify(chatsSnapshot.val())]).size;
+        }
+        if (requestsSnapshot.exists()) {
+            totalSize += new Blob([JSON.stringify(requestsSnapshot.val())]).size;
+        }
+        if (friendshipsSnapshot.exists()) {
+            totalSize += new Blob([JSON.stringify(friendshipsSnapshot.val())]).size;
+        }
+        
+        const tamanhoMB = totalSize / 1024 / 1024;
+        console.log(`📈 Espaço usado: ${tamanhoMB.toFixed(2)} MB`);
+        
+        atualizarPainelEspaco(tamanhoMB);
+        
+        // Verificar limites
+        if (tamanhoMB >= LIMITE_CRITICO) {
+            console.warn('🚨 LIMITE CRÍTICO! Iniciando limpeza URGENTE...');
+            executarLimpezaUrgente();
+        } else if (tamanhoMB >= LIMITE_SEGURO) {
+            console.warn('⚠️  Limite seguro atingido! Iniciando limpeza preventiva...');
+            executarLimpezaPreventiva();
+        } else {
+            console.log(`✅ Espaço dentro do limite. Livre: ${(1024 - tamanhoMB).toFixed(2)} MB`);
+        }
+    })
+    .catch(error => {
+        console.error('❌ Erro ao verificar espaço:', error);
+        // Não mostrar erro para o usuário, apenas log
+    });
 }
 
 function executarLimpezaUrgente() {
