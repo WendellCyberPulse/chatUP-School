@@ -88,11 +88,13 @@ body {
     flex-direction: column;
 }
 
+/* Header do usuário */
 .user-info {
     padding: 25px 20px;
     background: var(--bg-sidebar-header);
     text-align: center;
     border-bottom: 1px solid var(--border-sidebar);
+    flex-shrink: 0;
 }
 
 .user-avatar {
@@ -122,7 +124,7 @@ body {
     word-break: break-all;
 }
 
-/* ========== TOGGLE DE TEMA ========== */
+/* Botões da sidebar */
 .theme-toggle-container {
     margin: 15px 0;
 }
@@ -169,11 +171,12 @@ body {
     background: #c53030;
 }
 
-/* ========== ABAS DA SIDEBAR ========== */
+/* ========== SISTEMA DE ABAS ========== */
 .sidebar-tabs {
     display: flex;
     border-bottom: 1px solid var(--border-sidebar);
     background: var(--bg-sidebar);
+    flex-shrink: 0;
 }
 
 .tab-btn {
@@ -185,7 +188,6 @@ body {
     cursor: pointer;
     font-size: 12px;
     transition: all 0.3s;
-    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -212,27 +214,44 @@ body {
     text-align: center;
 }
 
-/* ========== CONTEÚDO DAS ABAS ========== */
+.badge:empty {
+    display: none;
+}
+
+/* Container das abas */
 .tab-content {
     flex: 1;
     display: flex;
     flex-direction: column;
+    position: relative;
+    min-height: 0;
 }
 
+/* Cada aba individual */
 .tab-pane {
     display: none;
     flex: 1;
     flex-direction: column;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
 }
 
 .tab-pane.active {
     display: flex;
 }
 
-/* ========== CAIXA DE BUSCA ========== */
+/* ========== COMPONENTES DAS ABAS ========== */
 .search-box {
     padding: 15px;
     border-bottom: 1px solid var(--border-sidebar);
+    background: var(--bg-sidebar);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    flex-shrink: 0;
 }
 
 .search-box input {
@@ -254,11 +273,42 @@ body {
     border-color: var(--accent-color);
 }
 
-/* ========== LISTAS ========== */
-.friends-list, .search-results, .requests-list {
+/* Listas */
+.friends-list,
+.search-results,
+.requests-list {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 10px 0;
+}
+
+/* Garantir que cada lista só aparece na sua aba */
+#friendsTab .friends-list {
+    display: block !important;
+}
+
+#friendsTab .search-results,
+#friendsTab .requests-list {
+    display: none !important;
+}
+
+#searchTab .search-results {
+    display: block !important;
+}
+
+#searchTab .friends-list,
+#searchTab .requests-list {
+    display: none !important;
+}
+
+#requestsTab .requests-list {
+    display: block !important;
+}
+
+#requestsTab .friends-list,
+#requestsTab .search-results {
+    display: none !important;
 }
 
 /* ========== ITENS DE USUÁRIO ========== */
@@ -269,6 +319,7 @@ body {
     cursor: pointer;
     transition: background 0.3s;
     border-bottom: 1px solid var(--border-sidebar);
+    min-height: 60px;
 }
 
 .user-item:hover {
@@ -337,6 +388,7 @@ body {
     background: var(--text-sidebar-muted);
 }
 
+/* Ações do usuário */
 .user-actions {
     display: flex;
     gap: 5px;
@@ -357,7 +409,7 @@ body {
     color: var(--text-sidebar);
 }
 
-/* ========== BOTÕES DE AÇÃO ========== */
+/* Botões */
 .btn-small {
     padding: 6px 12px;
     border: none;
@@ -457,7 +509,7 @@ body {
     gap: 10px;
 }
 
-/* ========== MENSAGENS ========== */
+/* Mensagens */
 .chat-messages {
     flex: 1;
     padding: 20px 30px;
@@ -515,14 +567,31 @@ body {
     color: var(--text-secondary);
 }
 
-.message-time {
-    font-size: 11px;
-    opacity: 0.7;
-    text-align: right;
+.message-content {
+    position: relative;
+}
+
+.message-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
     margin-top: 4px;
 }
 
-/* ========== INPUT DO CHAT ========== */
+.message-time {
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.message-status {
+    font-size: 10px;
+    opacity: 0.8;
+    display: flex;
+    align-items: center;
+}
+
+/* Input do chat */
 .chat-input {
     padding: 20px 30px;
     background: var(--bg-primary);
@@ -570,7 +639,7 @@ body {
     font-size: 16px;
 }
 
-/* ========== MENSAGENS DE INFORMAÇÃO ========== */
+/* ========== COMPONENTES GERAIS ========== */
 .info-message, .loading {
     text-align: center;
     color: var(--text-muted);
@@ -579,24 +648,25 @@ body {
 }
 
 /* ========== SCROLLBAR PERSONALIZADO ========== */
-.friends-list::-webkit-scrollbar,
-.search-results::-webkit-scrollbar,
-.requests-list::-webkit-scrollbar,
-.chat-messages::-webkit-scrollbar {
+.sidebar ::-webkit-scrollbar {
     width: 6px;
 }
 
-.friends-list::-webkit-scrollbar-track,
-.search-results::-webkit-scrollbar-track,
-.requests-list::-webkit-scrollbar-track {
+.sidebar ::-webkit-scrollbar-track {
     background: var(--bg-sidebar);
 }
 
-.friends-list::-webkit-scrollbar-thumb,
-.search-results::-webkit-scrollbar-thumb,
-.requests-list::-webkit-scrollbar-thumb {
+.sidebar ::-webkit-scrollbar-thumb {
     background: var(--border-sidebar);
     border-radius: 3px;
+}
+
+.sidebar ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-sidebar-muted);
+}
+
+.chat-messages::-webkit-scrollbar {
+    width: 6px;
 }
 
 .chat-messages::-webkit-scrollbar-track {
@@ -608,170 +678,13 @@ body {
     border-radius: 3px;
 }
 
-/* ========== INDICADOR DE NOVAS MENSAGENS ========== */
-.unread-badge {
-    background: var(--accent-color);
-    color: white;
-    border-radius: 10px;
-    padding: 2px 6px;
-    font-size: 10px;
-    margin-left: auto;
-}
-
-/* ========== MENSAGENS OFFLINE ========== */
-.offline-message {
-    opacity: 0.7;
-    border: 1px dashed var(--text-muted);
-}
-
-/* ========== RESPONSIVIDADE ========== */
-@media (max-width: 768px) {
-    .container {
-        flex-direction: column;
-    }
-    
-    .sidebar {
-        width: 100%;
-        height: 40vh;
-    }
-    
-    .chat-area {
-        height: 60vh;
-    }
-}
-
-/* ========== STATUS DE MENSAGENS ========== */
-.message-content {
-    position: relative;
-}
-
-.message-footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 5px;
-    margin-top: 4px;
-}
-
-.message-time {
-    font-size: 10px;
-    opacity: 0.7;
-}
-
-.message-status {
-    font-size: 10px;
-    opacity: 0.8;
-    display: flex;
-    align-items: center;
-}
-
-/* Animações para os status */
-@keyframes pulse {
-    0% { opacity: 0.4; }
-    50% { opacity: 1; }
-    100% { opacity: 0.4; }
-}
-
-.message-status[data-status="sent"] {
-    animation: pulse 2s infinite;
-}
-
-.message-status[data-status="delivered"] {
-    color: var(--success-color);
-}
-
-.message-status[data-status="read"] {
-    color: var(--accent-color);
-}
-
-/* Badge de mensagens não lidas */
-.unread-indicator {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    background: var(--error-color);
-    color: white;
-    border-radius: 50%;
-    width: 18px;
-    height: 18px;
-    font-size: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    animation: pulse 1.5s infinite;
-}
-
-/* Preview de status no item do amigo */
-.friend-item .last-message-status {
-    font-size: 10px;
-    opacity: 0.7;
-    margin-left: 5px;
-}
-
-/* ========== INDICADOR "DIGITANDO..." ========== */
-.typing-indicator {
-    display: flex;
-    align-items: center;
-    padding: 10px 15px;
-    margin: 5px 0;
-    max-width: 70%;
-    animation: fadeIn 0.3s ease-out;
-}
-
-.typing-avatar {
-    width: 30px;
-    height: 30px;
-    background: var(--accent-gradient);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 10px;
-    font-size: 12px;
-    color: white;
-    font-weight: bold;
-}
-
-.typing-content {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 18px;
-    padding: 10px 15px;
-    border-bottom-left-radius: 6px;
-}
-
-.typing-dots {
-    display: flex;
-    gap: 3px;
-    margin-bottom: 2px;
-}
-
-.typing-dots span {
-    width: 6px;
-    height: 6px;
-    background: var(--text-muted);
-    border-radius: 50%;
-    animation: typingBounce 1.4s infinite ease-in-out;
-}
-
-.typing-dots span:nth-child(1) { animation-delay: -0.32s; }
-.typing-dots span:nth-child(2) { animation-delay: -0.16s; }
-
-@keyframes typingBounce {
-    0%, 80%, 100% { transform: scale(0); }
-    40% { transform: scale(1); }
-}
-
-.typing-text {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-style: italic;
+/* Para Firefox */
+.sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-sidebar) var(--bg-sidebar);
 }
 
 /* ========== RESPONSIVIDADE MOBILE ========== */
-
-/* Header Mobile */
 .mobile-header {
     display: none;
     position: fixed;
@@ -860,7 +773,6 @@ body {
     z-index: 999;
 }
 
-/* Ajustes para mobile */
 @media (max-width: 768px) {
     .container {
         flex-direction: column;
@@ -910,6 +822,13 @@ body {
     .logout-btn {
         padding: 6px 12px;
         font-size: 13px;
+    }
+    
+    .friends-list,
+    .search-results,
+    .requests-list {
+        max-height: calc(100vh - 250px);
+        padding: 8px 0;
     }
 }
 
@@ -965,75 +884,7 @@ body {
     }
 }
 
-/* Ajustes para telas muito pequenas */
-@media (max-width: 360px) {
-    .sidebar {
-        width: 100%;
-        max-width: none;
-    }
-    
-    .chat-header {
-        padding: 12px 15px;
-    }
-    
-    .chat-messages {
-        padding: 12px 15px;
-    }
-    
-    .chat-input {
-        padding: 12px 15px;
-    }
-    
-    .message {
-        max-width: 90%;
-        padding: 10px 14px;
-    }
-    
-    .message-text {
-        font-size: 14px;
-    }
-    
-    .message-footer {
-        margin-top: 3px;
-    }
-    
-    .message-time {
-        font-size: 9px;
-    }
-    
-    .message-status {
-        font-size: 9px;
-    }
-}
-
-/* Ajustes de altura para mobile */
-@media (max-height: 600px) {
-    .user-info {
-        padding: 15px 12px;
-    }
-    
-    .user-avatar {
-        width: 50px;
-        height: 50px;
-        font-size: 20px;
-        margin-bottom: 10px;
-    }
-    
-    .user-info h3 {
-        font-size: 1.1em;
-    }
-    
-    .tab-btn {
-        padding: 8px 4px;
-        font-size: 10px;
-    }
-    
-    .search-box {
-        padding: 10px;
-    }
-}
-
-/* Melhorias de usabilidade para touch */
+/* Melhorias para touch */
 @media (hover: none) and (pointer: coarse) {
     .user-item {
         padding: 15px 12px;
@@ -1056,35 +907,26 @@ body {
         min-height: 40px;
     }
     
-    /* Melhorar área de toque */
     .message {
         padding: 12px 16px;
         margin: 10px 0;
     }
 }
 
-/* Orientação paisagem em mobile */
-@media (max-width: 768px) and (orientation: landscape) {
-    .mobile-header {
-        height: 50px;
-    }
-    
-    .chat-area {
-        margin-top: 50px;
-        height: calc(100vh - 50px);
-    }
-    
-    .sidebar {
-        overflow-y: auto;
-    }
-    
-    .user-info {
-        padding: 15px;
-    }
-    
-    .user-avatar {
-        width: 45px;
-        height: 45px;
-        font-size: 18px;
-    }
+/* Mostra só a aba ativa */
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: flex;
+}
+.tab-pane {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+}
+
+.tab-pane.active {
+    display: flex;
 }

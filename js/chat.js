@@ -106,24 +106,29 @@ function setupEventListeners() {
 }
 
 // ========== SISTEMA DE ABAS ==========
+
 function setupTabs() {
     const tabBtns = document.querySelectorAll('.tab-btn');
-    
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
     tabBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             const tabName = this.getAttribute('data-tab');
-            
-            // Remover active de todas as abas
+
+            // Remover ativo de tudo
             tabBtns.forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-            
-            // Ativar aba clicada
+            tabPanes.forEach(pane => pane.classList.remove('active'));
+
+            // Ativar botão clicado
             this.classList.add('active');
-            document.getElementById(tabName + 'Tab').classList.add('active');
-            
-            // SEMPRE recarregar amigos quando mudar para aba de amigos
+
+            // Ativar a aba correspondente
+            const targetPaneId = tabName === 'requests' ? 'requestsPane' : tabName + 'Tab';
+            const targetPane = document.getElementById(targetPaneId);
+            if (targetPane) targetPane.classList.add('active');
+
+            // Carregar conteúdo
             if (tabName === 'friends') {
-                console.log('🔁 Alternando para aba Amigos - Carregando lista...');
                 loadFriendsList();
             } else if (tabName === 'search') {
                 setupSearch();
@@ -132,10 +137,33 @@ function setupTabs() {
             }
         });
     });
-    
-    // Configurar busca de amigos
+
+    // Eventos de busca
     document.getElementById('friendSearch').addEventListener('input', filterFriends);
     document.getElementById('userSearch').addEventListener('input', searchUsers);
+
+    // Ativar primeira aba por padrão
+    tabBtns[0]?.click();
+}
+
+
+function limparSolicitacoesDeAbasErradas(abaAtiva) {
+    if (abaAtiva !== 'requests') {
+        // Se não estamos na aba de solicitações, limpar qualquer solicitação que apareceu errado
+        const friendsList = document.getElementById('friendsList');
+        const searchResults = document.getElementById('searchResults');
+        
+        // Remover itens de solicitação que possam ter sido adicionados erroneamente
+        if (friendsList) {
+            const solicitacoesErradas = friendsList.querySelectorAll('.user-item[id^="request-"]');
+            solicitacoesErradas.forEach(item => item.remove());
+        }
+        
+        if (searchResults) {
+            const solicitacoesErradas = searchResults.querySelectorAll('.user-item[id^="request-"]');
+            solicitacoesErradas.forEach(item => item.remove());
+        }
+    }
 }
 
 // Atualizar cache quando um novo amigo é adicionado
@@ -599,87 +627,116 @@ function sendFriendRequest(toUsername) {
         });
 }
 
-// ========== SOLICITAÇÕES DE AMIZADE CORRIGIDAS ==========
+// ========== SOLICITAÇÕES DE AMIZADE 2 ==========
 function loadFriendRequests(snapshot = null) {
-    const requestsList = document.getElementById('requestsList');
     const requestsBadge = document.getElementById('requestsBadge');
+    const requestsList = document.getElementById('requestsList');
     
-    console.log('📨 Carregando solicitações...');
+    if (!requestsList) return;
+    requestsList.innerHTML = '<div class="loading">Carregando solicitações...</div>';
     
-    if (!requestsList) {
-        console.error('❌ requestsList não encontrado!');
-        return;
-    }
-    
-    // Se não tem snapshot, buscar do Firebase
+    // Buscar do Firebase se não houver snapshot
     if (!snapshot) {
-        database.ref('friend_requests').orderByChild('to').equalTo(currentUser.id).once('value')
-            .then(newSnapshot => {
-                loadFriendRequests(newSnapshot);
-            });
+        database.ref('friend_requests')
+            .orderByChild('to')
+            .equalTo(currentUser.id)
+            .once('value')
+            .then(loadFriendRequests);
         return;
     }
     
     requestsList.innerHTML = '';
-    pendingRequests = 0;
+    let pendingCount = 0;
     
     if (!snapshot.exists()) {
         requestsList.innerHTML = '<div class="info-message">Nenhuma solicitação pendente</div>';
-        if (requestsBadge) {
-            requestsBadge.style.display = 'none';
-        }
+        if (requestsBadge) requestsBadge.style.display = 'none';
         return;
     }
     
     const requests = snapshot.val();
-    console.log('📧 Solicitações encontradas:', requests);
-    
-    // Processar cada solicitação
     const promises = [];
-    
-    Object.keys(requests).forEach(requestId => {
-        const request = requests[requestId];
-        
-        if (request.status === 'pending' && request.to === currentUser.id) {
-            pendingRequests++;
+
+    Object.keys(requests).forEach(id => {
+        const req = requests[id];
+        if (req.status === 'pending' && req.to === currentUser.id) {
+            pendingCount++;
             promises.push(
-                database.ref('users/' + request.from).once('value')
-                    .then(userSnapshot => {
-                        if (userSnapshot.exists()) {
-                            return { request, user: userSnapshot.val() };
-                        }
-                        return null;
+                database.ref('users/' + req.from).once('value')
+                    .then(userSnap => {
+                        if (!userSnap.exists()) return;
+                        const user = userSnap.val();
+
+                        const item = document.createElement('div');
+                        item.className = 'user-item';
+                        item.id = `request-${req.from}`;
+                        item.innerHTML = `
+                            <div class="user-avatar-small">${user.displayName.charAt(0).toUpperCase()}</div>
+                            <div class="user-details">
+                                <div class="user-name">${user.displayName}</div>
+                                <div class="user-username">@${user.username}</div>
+                                <div class="user-status">Solicitação de amizade</div>
+                            </div>
+                            <div class="user-actions">
+                                <button class="btn-small btn-success" onclick="acceptFriendRequest('${req.from}', '${user.displayName}')">Aceitar</button>
+                                <button class="btn-small btn-danger" onclick="rejectFriendRequest('${req.from}')">Recusar</button>
+                            </div>
+                        `;
+                        requestsList.appendChild(item);
                     })
             );
         }
     });
-    
-    // Esperar todas as promessas e depois renderizar
-    Promise.all(promises).then(results => {
-        results.forEach(result => {
-            if (result) {
-                addRequestToList(result.request, result.user);
-            }
-        });
-        
-        if (pendingRequests === 0) {
+
+    Promise.all(promises).then(() => {
+        if (pendingCount === 0) {
             requestsList.innerHTML = '<div class="info-message">Nenhuma solicitação pendente</div>';
-        }
-        
-        // Atualizar badge
-        if (requestsBadge) {
-            if (pendingRequests > 0) {
-                requestsBadge.textContent = pendingRequests;
+            if (requestsBadge) requestsBadge.style.display = 'none';
+        } else {
+            if (requestsBadge) {
+                requestsBadge.textContent = pendingCount;
                 requestsBadge.style.display = 'inline';
-            } else {
-                requestsBadge.style.display = 'none';
             }
         }
-        
-        console.log(`✅ ${pendingRequests} solicitação(ões) carregada(s)`);
     });
 }
 
+
+function addRequestToCorrectTab(request, user) {
+    const requestsList = document.getElementById('requestsList');
+    
+    // Verificar se estamos na aba de solicitações
+    if (!requestsList) {
+        console.log('⚠️ Não está na aba de solicitações, ignorando...');
+        return;
+    }
+    
+    const requestItem = document.createElement('div');
+    requestItem.className = 'user-item';
+    requestItem.id = `request-${request.from}`;
+    
+    requestItem.innerHTML = `
+        <div class="user-avatar-small">${user.displayName.charAt(0).toUpperCase()}</div>
+        <div class="user-details">
+            <div class="user-name">${user.displayName}</div>
+            <div class="user-username">@${user.username}</div>
+            <div class="user-status">
+                <span class="status-dot"></span>
+                Solicitação de amizade
+            </div>
+        </div>
+        <div class="user-actions">
+            <button class="btn-small btn-success" onclick="acceptFriendRequest('${request.from}', '${user.displayName}')">
+                Aceitar
+            </button>
+            <button class="btn-small btn-danger" onclick="rejectFriendRequest('${request.from}')">
+                Recusar
+            </button>
+        </div>
+    `;
+    
+    requestsList.appendChild(requestItem);
+}
 // Função simplificada para adicionar solicitação
 function addRequestToList(request, user) {
     const requestsList = document.getElementById('requestsList');
@@ -712,60 +769,10 @@ function addRequestToList(request, user) {
 }
 
 // Aplicar estilos CSS imediatamente
-function aplicarEstilosImediatos() {
-    const style = document.createElement('style');
-    style.textContent = `
-        /* Forçar visibilidade da aba de solicitações */
-        #requestsTab {
-            display: flex !important;
-            flex-direction: column !important;
-            flex: 1 !important;
-        }
-        
-        /* Forçar visibilidade dos itens */
-        #requestsList .user-item {
-            display: flex !important;
-            align-items: center !important;
-            padding: 15px !important;
-            margin: 8px 15px !important;
-            background: #4a5568 !important;
-            border-radius: 10px !important;
-            border: 1px solid #718096 !important;
-        }
-        
-        /* Forçar visibilidade dos botões */
-        #requestsList .user-actions {
-            display: flex !important;
-            gap: 10px !important;
-            margin-left: auto !important;
-        }
-        
-        #requestsList .btn-small {
-            padding: 8px 16px !important;
-            border: none !important;
-            border-radius: 6px !important;
-            font-size: 12px !important;
-            font-weight: 600 !important;
-            cursor: pointer !important;
-            min-width: 70px !important;
-        }
-        
-        #requestsList .btn-success {
-            background: #48bb78 !important;
-            color: white !important;
-        }
-        
-        #requestsList .btn-danger {
-            background: #e53e3e !important;
-            color: white !important;
-        }
-    `;
-    
-    document.head.appendChild(style);
-    console.log('✅ Estilos de emergência aplicados!');
-}
 
-aplicarEstilosImediatos();
+
+
+
 
 function addRequestToList(request) {
     const requestsList = document.getElementById('requestsList');
@@ -819,119 +826,10 @@ function addRequestToList(request) {
         });
 }
 
-// SOLUÇÃO EMERGENCIAL - Recriar completamente a interface de solicitações
-function recriarInterfaceSolicitacoes() {
-    console.log('🔄 Recriando interface de solicitações...');
-    
-    const requestsTab = document.getElementById('requestsTab');
-    if (!requestsTab) {
-        console.error('❌ requestsTab não encontrado!');
-        return;
-    }
-    
-    // Limpar e recriar o conteúdo
-    requestsTab.innerHTML = `
-        <div class="requests-list" id="requestsList" style="border: 2px solid #48bb78; padding: 10px;">
-            <div class="info-message">Carregando solicitações...</div>
-        </div>
-    `;
-    
-    console.log('✅ Interface recriada com borda verde');
-    
-    // Recarregar as solicitações
-    setTimeout(() => {
-        recarregarSolicitacoes();
-    }, 1000);
-}
 
-// Função para recarregar solicitações
-function recarregarSolicitacoes() {
-    console.log('📨 Buscando solicitações no Firebase...');
-    
-    database.ref('friend_requests').orderByChild('to').equalTo(currentUser.id).once('value')
-        .then(snapshot => {
-            console.log('✅ Dados recebidos:', snapshot.val());
-            
-            const requestsList = document.getElementById('requestsList');
-            if (!requestsList) {
-                console.error('❌ requestsList não encontrado após recriação!');
-                return;
-            }
-            
-            requestsList.innerHTML = '';
-            
-            if (!snapshot.exists()) {
-                requestsList.innerHTML = '<div class="info-message" style="color: red; font-weight: bold;">NENHUMA SOLICITAÇÃO ENCONTRADA</div>';
-                return;
-            }
-            
-            const requests = snapshot.val();
-            let contador = 0;
-            
-            Object.keys(requests).forEach(requestId => {
-                const request = requests[requestId];
-                if (request.status === 'pending' && request.to === currentUser.id) {
-                    contador++;
-                    adicionarSolicitacaoVisual(request);
-                }
-            });
-            
-            if (contador === 0) {
-                requestsList.innerHTML = '<div class="info-message" style="color: orange; font-weight: bold;">SOLICITAÇÕES ENCONTRADAS MAS NENHUMA VÁLIDA</div>';
-            } else {
-                console.log(`✅ ${contador} solicitação(ões) adicionada(s) à interface`);
-            }
-        })
-        .catch(error => {
-            console.error('❌ Erro ao carregar solicitações:', error);
-        });
-}
 
-// Adicionar solicitação de forma VISÍVEL
-function adicionarSolicitacaoVisual(request) {
-    const requestsList = document.getElementById('requestsList');
-    
-    database.ref('users/' + request.from).once('value')
-        .then(snapshot => {
-            if (snapshot.exists()) {
-                const user = snapshot.val();
-                
-                const requestItem = document.createElement('div');
-                requestItem.className = 'user-item';
-                requestItem.style.cssText = `
-                    border: 2px solid #667eea !important;
-                    margin: 10px 0 !important;
-                    padding: 15px !important;
-                    background: #2d3748 !important;
-                    border-radius: 10px !important;
-                `;
-                
-                requestItem.innerHTML = `
-                    <div class="user-avatar-small" style="background: #667eea !important;">${user.displayName.charAt(0).toUpperCase()}</div>
-                    <div class="user-details" style="flex: 1;">
-                        <div class="user-name" style="color: white !important; font-weight: bold !important; font-size: 16px !important;">${user.displayName}</div>
-                        <div class="user-username" style="color: #a0aec0 !important;">@${user.username}</div>
-                        <div class="user-status" style="color: #48bb78 !important;">⬤ Solicitação de amizade</div>
-                    </div>
-                    <div class="user-actions" style="display: flex; gap: 10px;">
-                        <button class="btn-small btn-success" 
-                                onclick="acceptFriendRequest('${request.from}', '${user.displayName}')"
-                                style="background: #48bb78 !important; color: white !important; padding: 8px 16px !important; border: none !important; border-radius: 6px !important; cursor: pointer !important;">
-                            ✅ Aceitar
-                        </button>
-                        <button class="btn-small btn-danger" 
-                                onclick="rejectFriendRequest('${request.from}')"
-                                style="background: #e53e3e !important; color: white !important; padding: 8px 16px !important; border: none !important; border-radius: 6px !important; cursor: pointer !important;">
-                            ❌ Recusar
-                        </button>
-                    </div>
-                `;
-                
-                requestsList.appendChild(requestItem);
-                console.log('🎯 SOLICITAÇÃO VISÍVEL ADICIONADA:', user.displayName);
-            }
-        });
-}
+
+
 
 
 function acceptFriendRequest(fromUsername, fromDisplayName) {
