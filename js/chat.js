@@ -1,0 +1,1504 @@
+// chat.js - Sistema completo de amigos e chat
+let currentUser = null;
+let currentChat = null;
+let friends = {};
+let pendingRequests = 0;
+
+// ========== SISTEMA DE TEMAS ==========
+function initTheme() {
+    // Verificar tema salvo ou preferência do sistema
+    const savedTheme = localStorage.getItem('chatup-theme');
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    let theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
+    
+    // Aplicar tema
+    applyTheme(theme);
+    updateThemeButton(theme);
+    
+    console.log('🎨 Tema carregado:', theme);
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    applyTheme(newTheme);
+    updateThemeButton(newTheme);
+    
+    // Salvar preferência
+    localStorage.setItem('chatup-theme', newTheme);
+    
+    console.log('🔄 Tema alterado para:', newTheme);
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+}
+
+function updateThemeButton(theme) {
+    const themeToggle = document.getElementById('themeToggle');
+    if (!themeToggle) return;
+    
+    if (theme === 'dark') {
+        themeToggle.innerHTML = '<span class="theme-icon">☀️</span><span class="theme-text">Modo Claro</span>';
+    } else {
+        themeToggle.innerHTML = '<span class="theme-icon">🌙</span><span class="theme-text">Modo Escuro</span>';
+    }
+}
+
+// ========== INICIALIZAÇÃO ==========
+function initChat() {
+    console.log('🚀 Iniciando chat...');
+
+    initTheme();
+    
+    // Verificar se usuário está logado
+    const savedUser = sessionStorage.getItem('currentUser');
+    
+    if (!savedUser) {
+        console.log('❌ Nenhum usuário logado, redirecionando...');
+        window.location.href = 'index.html';
+        return;
+    }
+
+    currentUser = JSON.parse(savedUser);
+    console.log('👤 Usuário atual:', currentUser);
+
+    // Configurar sistemas de status
+    setupMessageStatusListener();
+    setupReadStatusListener();
+    setupTypingIndicator();
+    
+    
+    // Atualizar interface
+    updateUserInterface();
+    
+    // Configurar abas
+    setupTabs();
+    
+    // Configurar listeners do Firebase
+    setupFirebaseListeners();
+    
+    // Atualizar status para online
+    updateUserStatus(true);
+    
+    // Configurar eventos
+    setupEventListeners();
+}
+
+function updateUserInterface() {
+    document.getElementById('currentUserName').textContent = currentUser.displayName;
+    document.getElementById('currentUserId').textContent = currentUser.id;
+    document.getElementById('currentUserAvatar').textContent = currentUser.displayName.charAt(0).toUpperCase();
+}
+
+function setupEventListeners() {
+    // Enter para enviar mensagem
+    document.getElementById('messageInput')?.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') sendMessage();
+    });
+}
+
+// ========== SISTEMA DE ABAS ==========
+function setupTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const tabName = this.getAttribute('data-tab');
+            
+            // Remover active de todas as abas
+            tabBtns.forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+            
+            // Ativar aba clicada
+            this.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            // Carregar conteúdo específico da aba
+            if (tabName === 'friends') {
+                console.log('🔁 Alternando para aba Amigos');
+                // Usar cache se disponível, senão recarregar
+                if (friendsListLoaded) {
+                    renderFriendsFromCache();
+                } else {
+                    loadFriendsList();
+                }
+            } else if (tabName === 'search') {
+                setupSearch();
+            } else if (tabName === 'requests') {
+                loadFriendRequests();
+            }
+        });
+    });
+    
+    // Configurar busca de amigos
+    document.getElementById('friendSearch').addEventListener('input', filterFriends);
+    document.getElementById('userSearch').addEventListener('input', searchUsers);
+}
+
+// Atualizar cache quando um novo amigo é adicionado
+function updateFriendsCache() {
+    database.ref('friendships').orderByChild('status').equalTo('accepted').on('value', snapshot => {
+        if (!snapshot.exists()) {
+            friendsCache = {};
+            friendsListLoaded = true;
+            return;
+        }
+        
+        const friendships = snapshot.val();
+        const friendUsernames = [];
+        
+        // Coletar usernames dos amigos
+        Object.keys(friendships).forEach(friendshipId => {
+            const friendship = friendships[friendshipId];
+            if (friendship.user1 === currentUser.id) {
+                friendUsernames.push(friendship.user2);
+            } else if (friendship.user2 === currentUser.id) {
+                friendUsernames.push(friendship.user1);
+            }
+        });
+        
+        // Buscar dados atualizados dos amigos
+        const friendsPromises = friendUsernames.map(username => {
+            return database.ref('users/' + username).once('value');
+        });
+        
+        Promise.all(friendsPromises).then(snapshots => {
+            const newCache = {};
+            
+            snapshots.forEach(snapshot => {
+                if (snapshot.exists()) {
+                    const friend = snapshot.val();
+                    newCache[friend.username] = friend;
+                }
+            });
+            
+            // Atualizar cache
+            friendsCache = newCache;
+            friendsListLoaded = true;
+            
+            // Se estiver na aba de amigos, atualizar a lista
+            if (document.querySelector('#friendsTab').classList.contains('active')) {
+                renderFriendsFromCache();
+            }
+            
+            console.log(`🔄 Cache de amigos atualizado: ${Object.keys(friendsCache).length} amigos`);
+        });
+    });
+}
+
+// ========== FIREBASE LISTENERS ==========
+function setupFirebaseListeners() {
+    console.log('📡 Configurando listeners do Firebase...');
+    
+    // Listener para amigos (com cache)
+    updateFriendsCache();
+    
+    // Listener para solicitações de amizade
+    database.ref('friend_requests').orderByChild('to').equalTo(currentUser.id).on('value', snapshot => {
+        loadFriendRequests(snapshot);
+    });
+    
+    // Listener para status online dos usuários (atualiza cache)
+    database.ref('users').on('value', snapshot => {
+        updateUsersStatus(snapshot);
+    });
+}
+
+// ========== SISTEMA DE AMIGOS ==========
+let friendsCache = {}; // Cache de amigos
+let friendsListLoaded = false; // Flag para saber se já carregou
+
+function loadFriendsList(snapshot = null) {
+    const friendsList = document.getElementById('friendsList');
+    
+    console.log('👥 Carregando lista de amigos...', friendsListLoaded ? '(Usando cache)' : '(Carregando do Firebase)');
+    
+    // Se já temos os amigos em cache e é apenas uma mudança de aba, usar cache
+    if (friendsListLoaded && Object.keys(friendsCache).length > 0) {
+        console.log('⚡ Renderizando do cache...');
+        renderFriendsFromCache();
+        return;
+    }
+    
+    if (!snapshot || !snapshot.exists()) {
+        friendsList.innerHTML = '<div class="info-message">Você ainda não tem amigos</div>';
+        friendsListLoaded = true;
+        return;
+    }
+    
+    const friendships = snapshot.val();
+    const friendUsernames = [];
+    
+    // Coletar usernames dos amigos
+    Object.keys(friendships).forEach(friendshipId => {
+        const friendship = friendships[friendshipId];
+        if (friendship.user1 === currentUser.id) {
+            friendUsernames.push(friendship.user2);
+        } else if (friendship.user2 === currentUser.id) {
+            friendUsernames.push(friendship.user1);
+        }
+    });
+    
+    if (friendUsernames.length === 0) {
+        friendsList.innerHTML = '<div class="info-message">Você ainda não tem amigos</div>';
+        friendsListLoaded = true;
+        return;
+    }
+    
+    // Buscar dados dos amigos
+    friendsList.innerHTML = '<div class="loading">Carregando amigos...</div>';
+    
+    const friendsPromises = friendUsernames.map(username => {
+        return database.ref('users/' + username).once('value');
+    });
+    
+    Promise.all(friendsPromises).then(snapshots => {
+        friendsCache = {}; // Limpar cache
+        friendsList.innerHTML = '';
+        
+        snapshots.forEach(snapshot => {
+            if (snapshot.exists()) {
+                const friend = snapshot.val();
+                friendsCache[friend.username] = friend;
+                addFriendToList(friend);
+            }
+        });
+        
+        friendsListLoaded = true;
+        
+        if (friendsList.children.length === 0) {
+            friendsList.innerHTML = '<div class="info-message">Nenhum amigo encontrado</div>';
+        } else {
+            console.log(`✅ ${Object.keys(friendsCache).length} amigos carregados no cache`);
+        }
+    });
+}
+
+// Renderizar amigos do cache
+function renderFriendsFromCache() {
+    const friendsList = document.getElementById('friendsList');
+    friendsList.innerHTML = '';
+    
+    if (Object.keys(friendsCache).length === 0) {
+        friendsList.innerHTML = '<div class="info-message">Você ainda não tem amigos</div>';
+        return;
+    }
+    
+    Object.values(friendsCache).forEach(friend => {
+        addFriendToList(friend);
+    });
+    
+    console.log(`⚡ ${Object.keys(friendsCache).length} amigos renderizados do cache`);
+}
+
+// Adicionar amigo à lista (agora atualiza o cache também)
+function addFriendToList(friend) {
+    const friendsList = document.getElementById('friendsList');
+    
+    // Atualizar cache
+    friendsCache[friend.username] = friend;
+    
+    const friendItem = document.createElement('div');
+    friendItem.className = 'user-item';
+    friendItem.onclick = () => startChat(friend.username, friend.displayName);
+    
+    friendItem.innerHTML = `
+        <div class="user-avatar-small">${friend.displayName.charAt(0).toUpperCase()}</div>
+        <div class="user-details">
+            <div class="user-name">${friend.displayName}</div>
+            <div class="user-username">@${friend.username}</div>
+            <div class="user-status ${friend.isOnline ? 'status-online' : 'status-offline'}">
+                <span class="status-dot"></span>
+                ${friend.isOnline ? 'Online' : 'Último visto ' + formatLastSeen(friend.lastSeen)}
+            </div>
+        </div>
+        ${!friend.isOnline ? '<div class="offline-indicator" title="Offline">🔴</div>' : ''}
+    `;
+    
+    friendsList.appendChild(friendItem);
+}
+
+function addFriendToList(friend) {
+    const friendsList = document.getElementById('friendsList');
+    
+    const friendItem = document.createElement('div');
+    friendItem.className = 'user-item';
+    friendItem.onclick = () => startChat(friend.username, friend.displayName);
+    
+    friendItem.innerHTML = `
+        <div class="user-avatar-small">${friend.displayName.charAt(0).toUpperCase()}</div>
+        <div class="user-details">
+            <div class="user-name">${friend.displayName}</div>
+            <div class="user-username">@${friend.username}</div>
+            <div class="user-status ${friend.isOnline ? 'status-online' : 'status-offline'}">
+                <span class="status-dot"></span>
+                ${friend.isOnline ? 'Online' : 'Último visto ' + formatLastSeen(friend.lastSeen)}
+            </div>
+        </div>
+        ${!friend.isOnline ? '<div class="offline-indicator" title="Offline">🔴</div>' : ''}
+    `;
+    
+    friendsList.appendChild(friendItem);
+}
+
+function filterFriends() {
+    const searchTerm = document.getElementById('friendSearch').value.toLowerCase();
+    const friendItems = document.querySelectorAll('#friendsList .user-item');
+    
+    friendItems.forEach(item => {
+        const userName = item.querySelector('.user-name').textContent.toLowerCase();
+        const userUsername = item.querySelector('.user-username').textContent.toLowerCase();
+        
+        if (userName.includes(searchTerm) || userUsername.includes(searchTerm)) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+// ========== SISTEMA DE BUSCA ==========
+function setupSearch() {
+    document.getElementById('userSearch').value = '';
+    document.getElementById('searchResults').innerHTML = `
+        <div class="info-message">
+            Digite um username para buscar usuários
+        </div>
+    `;
+}
+
+function searchUsers() {
+    const searchTerm = document.getElementById('userSearch').value.trim().toLowerCase();
+    const searchResults = document.getElementById('searchResults');
+    
+    if (searchTerm.length < 2) {
+        searchResults.innerHTML = '<div class="info-message">Digite pelo menos 2 caracteres</div>';
+        return;
+    }
+    
+    searchResults.innerHTML = '<div class="loading">Buscando usuários...</div>';
+    
+    // Buscar TODOS os usuários primeiro
+    database.ref('users').once('value')
+        .then(snapshot => {
+            searchResults.innerHTML = '';
+            
+            if (!snapshot.exists()) {
+                searchResults.innerHTML = '<div class="info-message">Nenhum usuário encontrado</div>';
+                return;
+            }
+            
+            const users = snapshot.val();
+            let foundUsers = false;
+            
+            Object.keys(users).forEach(username => {
+                const user = users[username];
+                
+                // Não mostrar o usuário atual e filtrar por searchTerm
+                if (username !== currentUser.id && 
+                    (user.username.includes(searchTerm) || 
+                     user.displayName.toLowerCase().includes(searchTerm))) {
+                    foundUsers = true;
+                    addUserToSearchResults(user);
+                }
+            });
+            
+            if (!foundUsers) {
+                searchResults.innerHTML = '<div class="info-message">Nenhum usuário encontrado</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Erro na busca:', error);
+            searchResults.innerHTML = '<div class="info-message">Erro ao buscar usuários</div>';
+        });
+}
+
+// ========== SISTEMA DE BUSCA ATUALIZADO ==========
+function addUserToSearchResults(user) {
+    const searchResults = document.getElementById('searchResults');
+    
+    const userItem = document.createElement('div');
+    userItem.className = 'user-item';
+    
+    // Verificar status da amizade
+    const friendshipId = getFriendshipId(currentUser.id, user.username);
+    
+    // Primeiro verifica se já é amigo
+    database.ref('friendships/' + friendshipId).once('value')
+        .then(snapshot => {
+            let buttonHtml = '';
+            
+            if (snapshot.exists()) {
+                const friendship = snapshot.val();
+                if (friendship.status === 'accepted') {
+                    buttonHtml = '<button class="btn-small btn-secondary" disabled>Amigo</button>';
+                } else {
+                    buttonHtml = '<button class="btn-small btn-secondary" disabled>Solicitado</button>';
+                }
+                
+                // Adiciona o item com o botão já definido
+                userItem.innerHTML = `
+                    <div class="user-avatar-small">${user.displayName.charAt(0).toUpperCase()}</div>
+                    <div class="user-details">
+                        <div class="user-name">${user.displayName}</div>
+                        <div class="user-username">@${user.username}</div>
+                        <div class="user-status ${user.isOnline ? 'status-online' : 'status-offline'}">
+                            <span class="status-dot"></span>
+                            ${user.isOnline ? 'Online' : 'Offline'}
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        ${buttonHtml}
+                    </div>
+                `;
+                
+                searchResults.appendChild(userItem);
+            } else {
+                // Se não é amigo, verifica se há solicitação pendente
+                database.ref('friend_requests/' + friendshipId).once('value')
+                    .then(requestSnapshot => {
+                        if (requestSnapshot.exists() && requestSnapshot.val().status === 'pending') {
+                            buttonHtml = '<button class="btn-small btn-secondary" disabled>Solicitado</button>';
+                        } else {
+                            buttonHtml = `<button class="btn-small btn-primary" onclick="sendFriendRequest('${user.username}')">
+                                Adicionar
+                            </button>`;
+                        }
+                        
+                        // Adiciona o item com o botão definido
+                        userItem.innerHTML = `
+                            <div class="user-avatar-small">${user.displayName.charAt(0).toUpperCase()}</div>
+                            <div class="user-details">
+                                <div class="user-name">${user.displayName}</div>
+                                <div class="user-username">@${user.username}</div>
+                                <div class="user-status ${user.isOnline ? 'status-online' : 'status-offline'}">
+                                    <span class="status-dot"></span>
+                                    ${user.isOnline ? 'Online' : 'Offline'}
+                                </div>
+                            </div>
+                            <div class="user-actions">
+                                ${buttonHtml}
+                            </div>
+                        `;
+                        
+                        searchResults.appendChild(userItem);
+                    })
+                    .catch(error => {
+                        console.error('Erro ao verificar solicitação:', error);
+                    });
+            }
+        })
+        .catch(error => {
+            console.error('Erro ao verificar amizade:', error);
+        });
+}
+
+// ========== SOLICITAÇÕES DE AMIZADE ==========
+function sendFriendRequest(toUsername) {
+    const friendshipId = getFriendshipId(currentUser.id, toUsername);
+    
+    const requestData = {
+        from: currentUser.id,
+        to: toUsername,
+        status: 'pending',
+        sentAt: Date.now()
+    };
+    
+    database.ref('friend_requests/' + friendshipId).set(requestData)
+        .then(() => {
+            console.log('✅ Solicitação enviada para:', toUsername);
+            showNotification('Solicitação de amizade enviada!');
+        })
+        .catch(error => {
+            console.error('❌ Erro ao enviar solicitação:', error);
+            showNotification('Erro ao enviar solicitação', 'error');
+        });
+}
+
+// ========== SOLICITAÇÕES DE AMIZADE CORRIGIDAS ==========
+function loadFriendRequests(snapshot = null) {
+    const requestsList = document.getElementById('requestsList');
+    const requestsBadge = document.getElementById('requestsBadge');
+    
+    console.log('📨 Carregando solicitações...');
+    
+    if (!requestsList) {
+        console.error('❌ requestsList não encontrado!');
+        return;
+    }
+    
+    // Se não tem snapshot, buscar do Firebase
+    if (!snapshot) {
+        database.ref('friend_requests').orderByChild('to').equalTo(currentUser.id).once('value')
+            .then(newSnapshot => {
+                loadFriendRequests(newSnapshot);
+            });
+        return;
+    }
+    
+    requestsList.innerHTML = '';
+    pendingRequests = 0;
+    
+    if (!snapshot.exists()) {
+        requestsList.innerHTML = '<div class="info-message">Nenhuma solicitação pendente</div>';
+        if (requestsBadge) {
+            requestsBadge.style.display = 'none';
+        }
+        return;
+    }
+    
+    const requests = snapshot.val();
+    console.log('📧 Solicitações encontradas:', requests);
+    
+    // Processar cada solicitação
+    const promises = [];
+    
+    Object.keys(requests).forEach(requestId => {
+        const request = requests[requestId];
+        
+        if (request.status === 'pending' && request.to === currentUser.id) {
+            pendingRequests++;
+            promises.push(
+                database.ref('users/' + request.from).once('value')
+                    .then(userSnapshot => {
+                        if (userSnapshot.exists()) {
+                            return { request, user: userSnapshot.val() };
+                        }
+                        return null;
+                    })
+            );
+        }
+    });
+    
+    // Esperar todas as promessas e depois renderizar
+    Promise.all(promises).then(results => {
+        results.forEach(result => {
+            if (result) {
+                addRequestToList(result.request, result.user);
+            }
+        });
+        
+        if (pendingRequests === 0) {
+            requestsList.innerHTML = '<div class="info-message">Nenhuma solicitação pendente</div>';
+        }
+        
+        // Atualizar badge
+        if (requestsBadge) {
+            if (pendingRequests > 0) {
+                requestsBadge.textContent = pendingRequests;
+                requestsBadge.style.display = 'inline';
+            } else {
+                requestsBadge.style.display = 'none';
+            }
+        }
+        
+        console.log(`✅ ${pendingRequests} solicitação(ões) carregada(s)`);
+    });
+}
+
+// Função simplificada para adicionar solicitação
+function addRequestToList(request, user) {
+    const requestsList = document.getElementById('requestsList');
+    
+    const requestItem = document.createElement('div');
+    requestItem.className = 'user-item';
+    requestItem.id = `request-${request.from}`;
+    
+    requestItem.innerHTML = `
+        <div class="user-avatar-small">${user.displayName.charAt(0).toUpperCase()}</div>
+        <div class="user-details">
+            <div class="user-name">${user.displayName}</div>
+            <div class="user-username">@${user.username}</div>
+            <div class="user-status">
+                <span class="status-dot"></span>
+                Solicitação de amizade
+            </div>
+        </div>
+        <div class="user-actions">
+            <button class="btn-small btn-success" onclick="acceptFriendRequest('${request.from}', '${user.displayName}')">
+                Aceitar
+            </button>
+            <button class="btn-small btn-danger" onclick="rejectFriendRequest('${request.from}')">
+                Recusar
+            </button>
+        </div>
+    `;
+    
+    requestsList.appendChild(requestItem);
+}
+
+// Aplicar estilos CSS imediatamente
+function aplicarEstilosImediatos() {
+    const style = document.createElement('style');
+    style.textContent = `
+        /* Forçar visibilidade da aba de solicitações */
+        #requestsTab {
+            display: flex !important;
+            flex-direction: column !important;
+            flex: 1 !important;
+        }
+        
+        /* Forçar visibilidade dos itens */
+        #requestsList .user-item {
+            display: flex !important;
+            align-items: center !important;
+            padding: 15px !important;
+            margin: 8px 15px !important;
+            background: #4a5568 !important;
+            border-radius: 10px !important;
+            border: 1px solid #718096 !important;
+        }
+        
+        /* Forçar visibilidade dos botões */
+        #requestsList .user-actions {
+            display: flex !important;
+            gap: 10px !important;
+            margin-left: auto !important;
+        }
+        
+        #requestsList .btn-small {
+            padding: 8px 16px !important;
+            border: none !important;
+            border-radius: 6px !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            cursor: pointer !important;
+            min-width: 70px !important;
+        }
+        
+        #requestsList .btn-success {
+            background: #48bb78 !important;
+            color: white !important;
+        }
+        
+        #requestsList .btn-danger {
+            background: #e53e3e !important;
+            color: white !important;
+        }
+    `;
+    
+    document.head.appendChild(style);
+    console.log('✅ Estilos de emergência aplicados!');
+}
+
+aplicarEstilosImediatos();
+
+function addRequestToList(request) {
+    const requestsList = document.getElementById('requestsList');
+    
+    console.log('🔄 Adicionando solicitação à lista:', request.from);
+    
+    if (!requestsList) {
+        console.error('❌ requestsList não encontrado!');
+        return;
+    }
+    
+    // Buscar dados do usuário que enviou a solicitação
+    database.ref('users/' + request.from).once('value')
+        .then(snapshot => {
+            if (snapshot.exists()) {
+                const user = snapshot.val();
+                console.log('✅ Dados do usuário carregados:', user.displayName);
+                
+                // Criar elemento HTML
+                const requestItem = document.createElement('div');
+                requestItem.className = 'user-item';
+                requestItem.id = `request-${request.from}`;
+                
+                requestItem.innerHTML = `
+                    <div class="user-avatar-small">${user.displayName.charAt(0).toUpperCase()}</div>
+                    <div class="user-details">
+                        <div class="user-name">${user.displayName}</div>
+                        <div class="user-username">@${user.username}</div>
+                        <div class="user-status">Solicitação de amizade</div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn-small btn-success" onclick="acceptFriendRequest('${request.from}', '${user.displayName}')">
+                            Aceitar
+                        </button>
+                        <button class="btn-small btn-danger" onclick="rejectFriendRequest('${request.from}')">
+                            Recusar
+                        </button>
+                    </div>
+                `;
+                
+                // Adicionar à lista
+                requestsList.appendChild(requestItem);
+                console.log('✅ Solicitação adicionada à interface:', requestItem);
+                
+            } else {
+                console.error('❌ Usuário não encontrado:', request.from);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erro ao carregar usuário:', error);
+        });
+}
+
+// SOLUÇÃO EMERGENCIAL - Recriar completamente a interface de solicitações
+function recriarInterfaceSolicitacoes() {
+    console.log('🔄 Recriando interface de solicitações...');
+    
+    const requestsTab = document.getElementById('requestsTab');
+    if (!requestsTab) {
+        console.error('❌ requestsTab não encontrado!');
+        return;
+    }
+    
+    // Limpar e recriar o conteúdo
+    requestsTab.innerHTML = `
+        <div class="requests-list" id="requestsList" style="border: 2px solid #48bb78; padding: 10px;">
+            <div class="info-message">Carregando solicitações...</div>
+        </div>
+    `;
+    
+    console.log('✅ Interface recriada com borda verde');
+    
+    // Recarregar as solicitações
+    setTimeout(() => {
+        recarregarSolicitacoes();
+    }, 1000);
+}
+
+// Função para recarregar solicitações
+function recarregarSolicitacoes() {
+    console.log('📨 Buscando solicitações no Firebase...');
+    
+    database.ref('friend_requests').orderByChild('to').equalTo(currentUser.id).once('value')
+        .then(snapshot => {
+            console.log('✅ Dados recebidos:', snapshot.val());
+            
+            const requestsList = document.getElementById('requestsList');
+            if (!requestsList) {
+                console.error('❌ requestsList não encontrado após recriação!');
+                return;
+            }
+            
+            requestsList.innerHTML = '';
+            
+            if (!snapshot.exists()) {
+                requestsList.innerHTML = '<div class="info-message" style="color: red; font-weight: bold;">NENHUMA SOLICITAÇÃO ENCONTRADA</div>';
+                return;
+            }
+            
+            const requests = snapshot.val();
+            let contador = 0;
+            
+            Object.keys(requests).forEach(requestId => {
+                const request = requests[requestId];
+                if (request.status === 'pending' && request.to === currentUser.id) {
+                    contador++;
+                    adicionarSolicitacaoVisual(request);
+                }
+            });
+            
+            if (contador === 0) {
+                requestsList.innerHTML = '<div class="info-message" style="color: orange; font-weight: bold;">SOLICITAÇÕES ENCONTRADAS MAS NENHUMA VÁLIDA</div>';
+            } else {
+                console.log(`✅ ${contador} solicitação(ões) adicionada(s) à interface`);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erro ao carregar solicitações:', error);
+        });
+}
+
+// Adicionar solicitação de forma VISÍVEL
+function adicionarSolicitacaoVisual(request) {
+    const requestsList = document.getElementById('requestsList');
+    
+    database.ref('users/' + request.from).once('value')
+        .then(snapshot => {
+            if (snapshot.exists()) {
+                const user = snapshot.val();
+                
+                const requestItem = document.createElement('div');
+                requestItem.className = 'user-item';
+                requestItem.style.cssText = `
+                    border: 2px solid #667eea !important;
+                    margin: 10px 0 !important;
+                    padding: 15px !important;
+                    background: #2d3748 !important;
+                    border-radius: 10px !important;
+                `;
+                
+                requestItem.innerHTML = `
+                    <div class="user-avatar-small" style="background: #667eea !important;">${user.displayName.charAt(0).toUpperCase()}</div>
+                    <div class="user-details" style="flex: 1;">
+                        <div class="user-name" style="color: white !important; font-weight: bold !important; font-size: 16px !important;">${user.displayName}</div>
+                        <div class="user-username" style="color: #a0aec0 !important;">@${user.username}</div>
+                        <div class="user-status" style="color: #48bb78 !important;">⬤ Solicitação de amizade</div>
+                    </div>
+                    <div class="user-actions" style="display: flex; gap: 10px;">
+                        <button class="btn-small btn-success" 
+                                onclick="acceptFriendRequest('${request.from}', '${user.displayName}')"
+                                style="background: #48bb78 !important; color: white !important; padding: 8px 16px !important; border: none !important; border-radius: 6px !important; cursor: pointer !important;">
+                            ✅ Aceitar
+                        </button>
+                        <button class="btn-small btn-danger" 
+                                onclick="rejectFriendRequest('${request.from}')"
+                                style="background: #e53e3e !important; color: white !important; padding: 8px 16px !important; border: none !important; border-radius: 6px !important; cursor: pointer !important;">
+                            ❌ Recusar
+                        </button>
+                    </div>
+                `;
+                
+                requestsList.appendChild(requestItem);
+                console.log('🎯 SOLICITAÇÃO VISÍVEL ADICIONADA:', user.displayName);
+            }
+        });
+}
+
+
+function acceptFriendRequest(fromUsername, fromDisplayName) {
+    console.log('✅ Aceitando solicitação de:', fromUsername);
+    
+    const friendshipId = getFriendshipId(currentUser.id, fromUsername);
+    
+    // Criar amizade
+    const friendshipData = {
+        user1: currentUser.id,
+        user2: fromUsername,
+        status: 'accepted',
+        createdAt: Date.now()
+    };
+    
+    console.log('💾 Salvando amizade:', friendshipData);
+    
+    database.ref('friendships/' + friendshipId).set(friendshipData)
+        .then(() => {
+            console.log('✅ Amizade salva no Firebase');
+            // Remover solicitação
+            return database.ref('friend_requests/' + friendshipId).remove();
+        })
+        .then(() => {
+            console.log('✅ Solicitação removida do Firebase');
+            showNotification(`Agora você é amigo de ${fromDisplayName}!`);
+            
+            // Atualizar a lista de solicitações
+            loadFriendRequests();
+            
+            // Atualizar a lista de amigos
+            loadFriendsList();
+            
+            console.log('✅ Listas atualizadas');
+        })
+        .catch(error => {
+            console.error('❌ Erro ao aceitar amizade:', error);
+            showNotification('Erro ao aceitar amizade', 'error');
+        });
+}
+
+
+function rejectFriendRequest(fromUsername) {
+    console.log('❌ Recusando solicitação de:', fromUsername);
+    
+    const friendshipId = getFriendshipId(currentUser.id, fromUsername);
+    
+    database.ref('friend_requests/' + friendshipId).remove()
+        .then(() => {
+            console.log('✅ Solicitação removida do Firebase');
+            showNotification('Solicitação recusada');
+            
+            // Remover o item da lista
+            const requestItem = document.getElementById(`request-${fromUsername}`);
+            if (requestItem) {
+                requestItem.remove();
+            }
+            
+            // Atualizar contador
+            loadFriendRequests();
+        })
+        .catch(error => {
+            console.error('❌ Erro ao recusar solicitação:', error);
+            showNotification('Erro ao recusar solicitação', 'error');
+        });
+}
+
+function getFriendshipId(user1, user2) {
+    return [user1, user2].sort().join('_');
+}
+
+// ========== SISTEMA DE CHAT (FUNÇÕES ORIGINAIS) ==========
+// ========== SISTEMA DE STATUS DE MENSAGENS ==========
+
+// Atualizar status da mensagem
+function updateMessageStatus(messageKey, chatId, status) {
+    const updates = {};
+    updates[`chats/${chatId}/messages/${messageKey}/status`] = status;
+    updates[`chats/${chatId}/messages/${messageKey}/statusTimestamp`] = Date.now();
+    
+    database.ref().update(updates)
+        .then(() => {
+            console.log(`✅ Status da mensagem atualizado para: ${status}`);
+        })
+        .catch(error => {
+            console.error('❌ Erro ao atualizar status:', error);
+        });
+}
+
+// Verificar se o destinatário está online e atualizar status
+function setupMessageStatusListener() {
+    // Listener para novas mensagens
+    database.ref('users').on('value', (snapshot) => {
+        if (!currentChat || !snapshot.exists()) return;
+        
+        const users = snapshot.val();
+        const recipient = users[currentChat.id];
+        
+        if (recipient && recipient.isOnline) {
+            // Destinatário está online, marcar mensagens como entregues
+            markMessagesAsDelivered();
+        }
+    });
+}
+
+// Marcar mensagens como entregues
+function markMessagesAsDelivered() {
+    if (!currentChat) return;
+    
+    const chatId = generateChatId(currentUser.id, currentChat.id);
+    
+    database.ref(`chats/${chatId}/messages`).once('value')
+        .then((snapshot) => {
+            if (!snapshot.exists()) return;
+            
+            const messages = snapshot.val();
+            const updates = {};
+            
+            Object.keys(messages).forEach((key) => {
+                const message = messages[key];
+                // Se a mensagem é do usuário atual e ainda não foi entregue
+                if (message.sender === currentUser.id && message.status === 'sent') {
+                    updates[`chats/${chatId}/messages/${key}/status`] = 'delivered';
+                    updates[`chats/${chatId}/messages/${key}/statusTimestamp`] = Date.now();
+                }
+            });
+            
+            if (Object.keys(updates).length > 0) {
+                return database.ref().update(updates);
+            }
+        })
+        .then(() => {
+            console.log('✅ Mensagens marcadas como entregues');
+        })
+        .catch(error => {
+            console.error('❌ Erro ao marcar mensagens como entregues:', error);
+        });
+}
+
+// Marcar mensagens como lidas (quando o chat está aberto)
+function markMessagesAsRead() {
+    if (!currentChat) return;
+    
+    const chatId = generateChatId(currentUser.id, currentChat.id);
+    
+    database.ref(`chats/${chatId}/messages`).once('value')
+        .then((snapshot) => {
+            if (!snapshot.exists()) return;
+            
+            const messages = snapshot.val();
+            const updates = {};
+            
+            Object.keys(messages).forEach((key) => {
+                const message = messages[key];
+                // Se a mensagem é do outro usuário e ainda não foi lida
+                if (message.sender === currentChat.id && message.status !== 'read') {
+                    updates[`chats/${chatId}/messages/${key}/status`] = 'read';
+                    updates[`chats/${chatId}/messages/${key}/statusTimestamp`] = Date.now();
+                }
+            });
+            
+            if (Object.keys(updates).length > 0) {
+                return database.ref().update(updates);
+            }
+        })
+        .then(() => {
+            console.log('✅ Mensagens marcadas como lidas');
+        })
+        .catch(error => {
+            console.error('❌ Erro ao marcar mensagens como lidas:', error);
+        });
+}
+
+// Verificar se o chat está visível para marcar como lido
+function setupReadStatusListener() {
+    // Marcar como lido quando o chat ficar visível
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden && currentChat) {
+            markMessagesAsRead();
+        }
+    });
+    
+    // Marcar como lido quando o usuário interagir com a página
+    document.addEventListener('click', function() {
+        if (currentChat) {
+            markMessagesAsRead();
+        }
+    });
+    
+    // Marcar como lido quando receber novas mensagens
+    if (currentChat) {
+        const chatId = generateChatId(currentUser.id, currentChat.id);
+        database.ref(`chats/${chatId}/messages`).on('child_changed', (snapshot) => {
+            const message = snapshot.val();
+            if (message.sender === currentChat.id) {
+                markMessagesAsRead();
+            }
+        });
+    }
+}
+function startChat(username, displayName) {
+    console.log('💬 Iniciando chat com:', displayName, username);
+    
+    currentChat = {
+        id: username,
+        name: displayName
+    };
+
+    // Atualizar interface
+    document.getElementById('noChatSelected').style.display = 'none';
+    document.getElementById('activeChatHeader').style.display = 'flex';
+    document.getElementById('activeChatName').textContent = displayName;
+    document.getElementById('activeChatAvatar').textContent = displayName.charAt(0).toUpperCase();
+    
+    // Atualizar status
+    const friend = friends[username];
+    document.getElementById('activeChatStatus').textContent = friend && friend.isOnline ? 'Online' : 'Offline';
+    document.getElementById('activeChatStatus').className = `user-status ${friend && friend.isOnline ? 'status-online' : 'status-offline'}`;
+    
+    // Mostrar área de input
+    document.getElementById('chatInput').style.display = 'flex';
+    
+    // Carregar mensagens
+    loadChatMessages();
+    
+    // Focar no input
+    document.getElementById('messageInput').focus();
+}
+
+function loadChatMessages() {
+    const chatId = generateChatId(currentUser.id, currentChat.id);
+    const messagesContainer = document.getElementById('chatMessages');
+    
+    console.log('📨 Carregando mensagens do chat:', chatId);
+    
+    // Limpar mensagens anteriores
+    database.ref('chats/' + chatId + '/messages').off();
+    
+    // Listener para novas mensagens
+    database.ref('chats/' + chatId + '/messages').on('child_added', (snapshot) => {
+        const message = snapshot.val();
+        message.key = snapshot.key; // Adicionar a chave da mensagem
+        displayMessage(message);
+        scrollToBottom();
+    });
+    
+    // Listener para atualizações de status
+    database.ref('chats/' + chatId + '/messages').on('child_changed', (snapshot) => {
+        const updatedMessage = snapshot.val();
+        updatedMessage.key = snapshot.key;
+        updateMessageDisplay(updatedMessage);
+    });
+    
+    // Carregar mensagens existentes
+    database.ref('chats/' + chatId + '/messages').once('value')
+        .then((snapshot) => {
+            if (!snapshot.exists()) {
+                messagesContainer.innerHTML = `
+                    <div class="welcome-message">
+                        <p>Nenhuma mensagem ainda. Inicie a conversa!</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const messages = snapshot.val();
+            const messagesArray = [];
+            
+            Object.keys(messages).forEach((key) => {
+                const message = messages[key];
+                message.key = key;
+                messagesArray.push(message);
+            });
+            
+            // Ordenar por timestamp
+            messagesArray.sort((a, b) => a.timestamp - b.timestamp);
+            
+            // Exibir mensagens
+            messagesArray.forEach((message) => {
+                displayMessage(message);
+            });
+            
+            scrollToBottom();
+            
+            // Marcar mensagens como lidas
+            markMessagesAsRead();
+        })
+        .catch((error) => {
+            console.error('❌ Erro ao carregar mensagens:', error);
+            messagesContainer.innerHTML = '<div class="welcome-message"><p>Erro ao carregar mensagens</p></div>';
+        });
+}
+
+// Atualizar display da mensagem quando o status mudar
+function updateMessageDisplay(message) {
+    const messageElement = document.getElementById(`message-${message.messageId || message.key}`);
+    if (!messageElement) return;
+    
+    const statusElement = messageElement.querySelector('.message-status');
+    if (statusElement) {
+        statusElement.textContent = getStatusIcon(message.status, true);
+        
+        // Adicionar atributo para estilização
+        statusElement.setAttribute('data-status', message.status);
+    }
+}
+
+function generateChatId(user1, user2) {
+    return [user1, user2].sort().join('_');
+}
+
+function displayMessage(message) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const isSent = message.sender === currentUser.id;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+    messageDiv.id = `message-${message.messageId || message.key}`;
+    
+    const statusIcon = getStatusIcon(message.status, isSent);
+    const time = formatTime(message.timestamp);
+    
+    messageDiv.innerHTML = `
+        ${!isSent ? `<div class="message-sender">${message.senderName || message.sender}</div>` : ''}
+        <div class="message-content">
+            <div class="message-text">${message.text}</div>
+            <div class="message-footer">
+                <span class="message-time">${time}</span>
+                ${isSent ? `<span class="message-status">${statusIcon}</span>` : ''}
+            </div>
+        </div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+    
+    // Se é uma mensagem recebida, marcar como lida após um delay
+    if (!isSent && message.status !== 'read') {
+        setTimeout(() => {
+            markMessagesAsRead();
+        }, 1000);
+    }
+}
+
+// Obter ícone do status
+function getStatusIcon(status, isSent) {
+    if (!isSent) return '';
+    
+    switch (status) {
+        case 'sent':
+            return '⏰'; // Relógio - pendente
+        case 'delivered':
+            return '✅'; // Check - entregue
+        case 'read':
+            return '👀'; // Olhos - visualizada
+        default:
+            return '⏰'; // Padrão
+    }
+}
+
+function sendMessage() {
+    if (!currentChat) return;
+    
+    const input = document.getElementById('messageInput');
+    const text = input.value.trim();
+    
+    if (!text) return;
+
+    const message = {
+        text: text,
+        sender: currentUser.id,
+        senderName: currentUser.displayName,
+        timestamp: Date.now(),
+        chatId: generateChatId(currentUser.id, currentChat.id),
+        status: 'sent', // 'sent', 'delivered', 'read'
+        messageId: generateMessageId() // ID único para a mensagem
+    };
+
+    const chatId = generateChatId(currentUser.id, currentChat.id);
+    
+    console.log('📤 Enviando mensagem:', message);
+    
+    database.ref('chats/' + chatId + '/messages').push(message)
+        .then((ref) => {
+            input.value = '';
+            console.log('✅ Mensagem enviada com sucesso!');
+            
+            // Atualizar status para "entregue" quando o destinatário estiver online
+            updateMessageStatus(ref.key, chatId, 'delivered');
+        })
+        .catch(error => {
+            console.error('❌ Erro ao enviar mensagem:', error);
+            alert('Erro ao enviar mensagem. Tente novamente.');
+        });
+}
+
+// Gerar ID único para mensagem
+function generateMessageId() {
+    return 'MSG_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+function scrollToBottom() {
+    const messagesContainer = document.getElementById('chatMessages');
+    setTimeout(() => {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }, 100);
+}
+
+// ========== INDICADOR "DIGITANDO..." ==========
+let typingTimeout = null;
+
+function setupTypingIndicator() {
+    const messageInput = document.getElementById('messageInput');
+    
+    messageInput.addEventListener('input', function() {
+        if (this.value.trim().length > 0) {
+            startTyping();
+        } else {
+            stopTyping();
+        }
+    });
+    
+    messageInput.addEventListener('blur', stopTyping);
+}
+
+function startTyping() {
+    if (!currentChat) return;
+    
+    const chatId = generateChatId(currentUser.id, currentChat.id);
+    database.ref(`typing/${chatId}/${currentUser.id}`).set(true);
+    
+    // Limpar timeout anterior
+    if (typingTimeout) {
+        clearTimeout(typingTimeout);
+    }
+    
+    // Parar de digitar após 3 segundos de inatividade
+    typingTimeout = setTimeout(stopTyping, 3000);
+}
+
+function stopTyping() {
+    if (!currentChat) return;
+    
+    const chatId = generateChatId(currentUser.id, currentChat.id);
+    database.ref(`typing/${chatId}/${currentUser.id}`).remove();
+    
+    if (typingTimeout) {
+        clearTimeout(typingTimeout);
+        typingTimeout = null;
+    }
+}
+
+// Listener para indicador de typing do outro usuário
+function setupTypingListener() {
+    if (!currentChat) return;
+    
+    const chatId = generateChatId(currentUser.id, currentChat.id);
+    const typingRef = database.ref(`typing/${chatId}`);
+    
+    typingRef.on('value', (snapshot) => {
+        const typingData = snapshot.val();
+        showTypingIndicator(typingData);
+    });
+}
+
+function showTypingIndicator(typingData) {
+    const typingIndicator = document.getElementById('typingIndicator');
+    
+    if (!typingData || !typingData[currentChat.id]) {
+        if (typingIndicator) {
+            typingIndicator.remove();
+        }
+        return;
+    }
+    
+    if (!typingIndicator) {
+        const messagesContainer = document.getElementById('chatMessages');
+        const indicator = document.createElement('div');
+        indicator.id = 'typingIndicator';
+        indicator.className = 'typing-indicator';
+        indicator.innerHTML = `
+            <div class="typing-avatar">${currentChat.name.charAt(0).toUpperCase()}</div>
+            <div class="typing-content">
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="typing-text">${currentChat.name} está digitando...</div>
+            </div>
+        `;
+        messagesContainer.appendChild(indicator);
+        scrollToBottom();
+    }
+}
+
+// ========== STATUS E UTILITÁRIOS ==========
+function updateUserStatus(isOnline) {
+    if (currentUser) {
+        database.ref('users/' + currentUser.id).update({
+            isOnline: isOnline,
+            lastSeen: Date.now()
+        })
+        .then(() => {
+            console.log(`✅ Status atualizado: ${isOnline ? 'Online' : 'Offline'}`);
+        })
+        .catch(error => {
+            console.error('❌ Erro ao atualizar status:', error);
+        });
+    }
+}
+
+function updateUsersStatus(snapshot) {
+    if (snapshot.exists()) {
+        const users = snapshot.val();
+        let cacheUpdated = false;
+        
+        // Atualizar status no cache
+        Object.keys(users).forEach(username => {
+            if (friendsCache[username]) {
+                friendsCache[username].isOnline = users[username].isOnline;
+                friendsCache[username].lastSeen = users[username].lastSeen;
+                cacheUpdated = true;
+            }
+        });
+        
+        // Se tiver um chat ativo, atualizar status
+        if (currentChat && friendsCache[currentChat.id]) {
+            const friend = friendsCache[currentChat.id];
+            document.getElementById('activeChatStatus').textContent = friend.isOnline ? 'Online' : 'Offline';
+            document.getElementById('activeChatStatus').className = `user-status ${friend.isOnline ? 'status-online' : 'status-offline'}`;
+        }
+        
+        // Se a aba de amigos estiver ativa e o cache foi atualizado, rerenderizar
+        if (cacheUpdated && document.querySelector('#friendsTab').classList.contains('active')) {
+            renderFriendsFromCache();
+        }
+    }
+}
+
+function logout() {
+    console.log('🚪 Fazendo logout...');
+    updateUserStatus(false);
+    sessionStorage.clear();
+    window.location.href = 'index.html';
+}
+
+// ========== FUNÇÕES AUXILIARES ==========
+function formatTime(timestamp) {
+    return new Date(timestamp).toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatLastSeen(timestamp) {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return 'agora';
+    if (minutes < 60) return `${minutes} min atrás`;
+    if (hours < 24) return `${hours} h atrás`;
+    return `${days} dias atrás`;
+}
+
+function showNotification(message, type = 'success') {
+    // Implementação simples - pode ser melhorada com toasts
+    console.log(`📢 ${type.toUpperCase()}: ${message}`);
+    alert(message);
+}
+
+function closeModal() {
+    document.getElementById('userProfileModal').style.display = 'none';
+}
+
+// ========== INICIALIZAÇÃO FINAL ==========
+document.addEventListener('DOMContentLoaded', initChat);
+
+// Atualizar status quando a página for fechada
+window.addEventListener('beforeunload', function() {
+    updateUserStatus(false);
+});
+
+
+// ========== FUNÇÃO DE DEBUG ==========
+function debugFirebase() {
+    console.log('=== DEBUG FIREBASE ===');
+    
+    // Verificar usuários
+    database.ref('users').once('value').then(snapshot => {
+        console.log('👥 USUÁRIOS:', snapshot.val());
+    });
+    
+    // Verificar solicitações
+    database.ref('friend_requests').once('value').then(snapshot => {
+        console.log('📨 SOLICITAÇÕES:', snapshot.val());
+    });
+    
+    // Verificar amizades
+    database.ref('friendships').once('value').then(snapshot => {
+        console.log('🤝 AMIZADES:', snapshot.val());
+    });
+}
+
+// Adicione um botão de debug temporário no HTML ou use no console
+// Função para debug da pesquisa
+function debugSearch() {
+    const searchTerm = document.getElementById('userSearch').value.trim().toLowerCase();
+    console.log('🔍 Termo de busca:', searchTerm);
+    
+    database.ref('users').once('value')
+        .then(snapshot => {
+            console.log('👥 Todos os usuários no banco:');
+            const users = snapshot.val();
+            Object.keys(users).forEach(username => {
+                const user = users[username];
+                console.log(`- @${user.username} (${user.displayName})`);
+            });
+        });
+}
+
+// Função para debug da interface de solicitações
+function debugSolicitacoes() {
+    console.log('=== DEBUG SOLICITAÇÕES ===');
+    
+    // Verificar elementos da DOM
+    const requestsTab = document.getElementById('requestsTab');
+    const requestsList = document.getElementById('requestsList');
+    const requestsBadge = document.getElementById('requestsBadge');
+    
+    console.log('📋 RequestsTab existe:', !!requestsTab);
+    console.log('📋 RequestsList existe:', !!requestsList);
+    console.log('📋 RequestsBadge existe:', !!requestsBadge);
+    
+    if (requestsList) {
+        console.log('📋 Conteúdo de requestsList:', requestsList.innerHTML);
+        console.log('📋 Número de filhos:', requestsList.children.length);
+    }
+    
+    // Verificar dados no Firebase
+    database.ref('friend_requests').once('value').then(snapshot => {
+        console.log('📨 Solicitações no Firebase:', snapshot.val());
+    });
+    
+    // Forçar atualização da lista
+    loadFriendRequests();
+}
+
+// Chame esta função no console: debugSolicitacoes()

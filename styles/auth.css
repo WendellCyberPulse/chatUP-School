@@ -1,0 +1,355 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.container {
+    width: 100%;
+    max-width: 450px;
+}
+
+.auth-screen {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    min-height: 600px;
+}
+
+/* Tela de Boas-Vindas */
+.welcome-screen {
+    padding: 50px 40px;
+    text-align: center;
+}
+
+.logo {
+    margin-bottom: 50px;
+}
+
+.logo-icon {
+    font-size: 60px;
+    margin-bottom: 20px;
+}
+
+.logo h1 {
+    color: #2d3748;
+    margin-bottom: 10px;
+    font-size: 2.2em;
+}
+
+.logo p {
+    color: #718096;
+    font-size: 1.1em;
+}
+
+.welcome-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* Telas de Formulário */
+.form-screen {
+    padding: 40px;
+}
+
+.form-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.back-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: #667eea;
+    cursor: pointer;
+    margin-right: 15px;
+    padding: 5px;
+}
+
+.form-header h2 {
+    color: #2d3748;
+    font-size: 1.8em;
+}
+
+.auth-form {
+    margin-bottom: 25px;
+}
+
+.form-group {
+    margin-bottom: 25px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #2d3748;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 16px;
+    transition: all 0.3s;
+    background: white;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-group input:invalid {
+    border-color: #e53e3e;
+}
+
+.input-with-prefix {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-prefix {
+    position: absolute;
+    left: 15px;
+    color: #718096;
+    font-weight: 500;
+    z-index: 1;
+}
+
+.input-with-prefix input {
+    padding-left: 35px;
+}
+
+.help-text {
+    font-size: 12px;
+    color: #718096;
+    margin-top: 5px;
+}
+
+.validation-message {
+    font-size: 12px;
+    margin-top: 5px;
+    font-weight: 500;
+}
+
+.validation-message.available {
+    color: #38a169;
+}
+
+.validation-message.taken {
+    color: #e53e3e;
+}
+
+.validation-message.checking {
+    color: #d69e2e;
+}
+
+/* Botões */
+.btn {
+    padding: 15px 25px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-align: center;
+    text-decoration: none;
+    display: block;
+}
+
+.btn-large {
+    width: 100%;
+    padding: 16px;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-secondary {
+    background: #f7fafc;
+    color: #4a5568;
+    border: 2px solid #e2e8f0;
+}
+
+.btn-secondary:hover {
+    background: #edf2f7;
+    border-color: #cbd5e0;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+/* Tela de Sucesso */
+.success-screen {
+    padding: 50px 40px;
+    text-align: center;
+}
+
+.success-icon {
+    font-size: 80px;
+    margin-bottom: 20px;
+}
+
+.success-screen h2 {
+    color: #2d3748;
+    margin-bottom: 30px;
+    font-size: 1.8em;
+}
+
+.user-info-card {
+    background: #f7fafc;
+    border-radius: 16px;
+    padding: 25px;
+    margin: 25px 0;
+    border: 2px solid #e2e8f0;
+}
+
+.user-avatar-large {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 50%;
+    margin: 0 auto 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: white;
+    font-weight: bold;
+}
+
+.user-details h3 {
+    color: #2d3748;
+    margin-bottom: 5px;
+    font-size: 1.3em;
+}
+
+.username {
+    color: #718096;
+    font-size: 1.1em;
+    font-weight: 500;
+}
+
+.success-message {
+    color: #718096;
+    margin-bottom: 30px;
+    line-height: 1.5;
+}
+
+/* Rodapé do Formulário */
+.form-footer {
+    text-align: center;
+    padding-top: 20px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.form-footer p {
+    color: #718096;
+}
+
+.form-footer a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.form-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Animações */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.form-screen, .success-screen {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* ========== TEMA PARA TELA DE LOGIN ========== */
+[data-theme="dark"] .login-screen {
+    background: #1a202c;
+    color: #f7fafc;
+}
+
+[data-theme="dark"] .logo h1 {
+    color: #f7fafc;
+}
+
+[data-theme="dark"] .logo p {
+    color: #a0aec0;
+}
+
+[data-theme="dark"] .form-section h2 {
+    color: #f7fafc;
+}
+
+[data-theme="dark"] .form-group label {
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .form-group input {
+    background: #2d3748;
+    border-color: #4a5568;
+    color: #f7fafc;
+}
+
+[data-theme="dark"] .form-group input:focus {
+    border-color: #667eea;
+}
+
+[data-theme="dark"] .help-text {
+    color: #a0aec0;
+}
+
+[data-theme="dark"] .user-id-display {
+    background: #2d3748;
+    border-color: #667eea;
+    color: #f7fafc;
+}
+
+[data-theme="dark"] .user-id {
+    background: #4a5568;
+    color: #f7fafc;
+}
+
+[data-theme="dark"] .form-footer p {
+    color: #a0aec0;
+}
