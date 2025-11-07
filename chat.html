@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChatUP - Conversas</title>
-    <link rel="stylesheet" href="./styles/chat.css">
-    <link rel="icon" href="./assets/compromisso-social.png">
+    <link rel="stylesheet" href="styles/chat.css">
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
 </head>
@@ -46,6 +45,36 @@
                         <span class="theme-text">Modo Escuro</span>
                     </button>
                 </div>
+
+                  <!-- Painel de Status do Espaço -->
+                <div class="space-status" id="spaceStatus" style="
+                    background: #2d3748;
+                    padding: 10px;
+                    border-radius: 8px;
+                    margin: 10px 0;
+                    text-align: center;
+                    display: none;"
+                >
+                <div style="font-size: 12px; color: #a0aec0; margin-bottom: 5px;">
+                    💾 Espaço Usado
+                </div>
+                <div class="space-bar">
+                    <div class="space-fill" id="spaceFill" style="
+                        height: 6px;
+                        background: #48bb78;
+                        border-radius: 3px;
+                        width: 0%;
+                        transition: width 0.5s;
+                    "></div>
+                </div>
+                <div class="space-text" id="spaceText" style="
+                    font-size: 11px;
+                    color: #e2e8f0;
+                    margin-top: 3px;
+                ">
+                    Calculando...
+                </div>
+            </div>
                 
                 <button class="logout-btn" onclick="logout()">Sair</button>
             </div>
@@ -144,9 +173,7 @@
         </div>
     </div>
 
-    <script src="./js/config.js"></script>
-    <script src="./js/chat.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/chat.js"></script>
 </body>
-
 </html>
-

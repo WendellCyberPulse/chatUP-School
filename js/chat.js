@@ -54,6 +54,9 @@ function initChat() {
     initTheme();
 
     initResponsive();
+
+    // 🎯 ATIVAR MONITORAMENTO AUTOMÁTICO DE ESPAÇO
+    configurarMonitoramentoEspaco();
     
     // Verificar se usuário está logado
     const savedUser = sessionStorage.getItem('currentUser');
@@ -1640,4 +1643,258 @@ function startChat(username, displayName) {
     
     // Focar no input
     document.getElementById('messageInput').focus();
+}
+
+// ========== LIMPEZA AUTOMÁTICA POR ESPAÇO ==========
+
+let monitoramentoAtivo = false;
+const LIMITE_SEGURO = 900; // 900 MB (90% de 1GB)
+const LIMITE_CRITICO = 950; // 950 MB (95% de 1GB)
+
+function configurarMonitoramentoEspaco() {
+    console.log('📊 Configurando monitoramento automático de espaço...');
+    
+    if (monitoramentoAtivo) return;
+    monitoramentoAtivo = true;
+    
+    // Verificar espaço a cada 2 horas
+    setInterval(() => {
+        verificarEspacoEAjustar();
+    }, 2 * 60 * 60 * 1000); // 2 horas
+    
+    // Verificar também na inicialização
+    setTimeout(() => {
+        verificarEspacoEAjustar();
+    }, 15000); // 15 segundos após iniciar
+    
+    console.log('✅ Monitoramento automático ativado!');
+}
+
+function verificarEspacoEAjustar() {
+    console.log('🔍 Verificando espaço usado...');
+    
+    database.ref().once('value')
+        .then(snapshot => {
+            if (!snapshot.exists()) return;
+
+            
+            // Calcular tamanho aproximado
+            const dataString = JSON.stringify(snapshot.val());
+            const tamanhoBytes = new Blob([dataString]).size;
+            const tamanhoMB = tamanhoBytes / 1024 / 1024;
+            
+            console.log(`📈 Espaço usado: ${tamanhoMB.toFixed(2)} MB`);
+
+            atualizarPainelEspaco(tamanhoMB);
+            
+            // Verificar se precisa limpar
+            if (tamanhoMB >= LIMITE_CRITICO) {
+                console.warn('🚨 LIMITE CRÍTICO! Iniciando limpeza URGENTE...');
+                executarLimpezaUrgente();
+            } else if (tamanhoMB >= LIMITE_SEGURO) {
+                console.warn('⚠️  Limite seguro atingido! Iniciando limpeza preventiva...');
+                executarLimpezaPreventiva();
+            } else {
+                console.log(`✅ Espaço dentro do limite. Livre: ${(1024 - tamanhoMB).toFixed(2)} MB`);
+            }
+            
+            // Mostrar status no console
+            console.log(`🎯 Status: ${tamanhoMB.toFixed(2)}MB / 1024MB (${((tamanhoMB / 1024) * 100).toFixed(1)}%)`);
+        })
+        .catch(error => {
+            console.error('❌ Erro ao verificar espaço:', error);
+        });
+}
+
+function executarLimpezaUrgente() {
+    console.log('🔥 LIMPEZA URGENTE: Espaço crítico detectado!');
+    
+    // Estratégia agressiva para liberar espaço rápido
+    const estrategias = [
+        () => limparMensagensAntigas(30),   // Mensagens com +30 dias
+        () => limparMensagensAntigas(60),   // Mensagens com +60 dias  
+        () => limparPorQuantidade(50),      // Manter só 50 msg/chat
+        () => limparMensagensAntigas(7)     // Mensagens com +7 dias
+    ];
+    
+    executarEstrategias(estrategias, 0);
+}
+
+function executarLimpezaPreventiva() {
+    console.log('🛡️  LIMPEZA PREVENTIVA: Liberando espaço...');
+    
+    // Estratégia mais suave
+    const estrategias = [
+        () => limparMensagensAntigas(180),  // Mensagens com +180 dias
+        () => limparPorQuantidade(100),     // Manter 100 msg/chat
+        () => limparMensagensAntigas(90)    // Mensagens com +90 dias
+    ];
+    
+    executarEstrategias(estrategias, 0);
+}
+
+function executarEstrategias(estrategias, index) {
+    if (index >= estrategias.length) {
+        console.log('✅ Todas as estratégias de limpeza concluídas');
+        
+        // Verificar espaço novamente após limpeza
+        setTimeout(() => {
+            verificarEspacoEAjustar();
+        }, 10000);
+        
+        return;
+    }
+    
+    console.log(`🔄 Executando estratégia ${index + 1}/${estrategias.length}...`);
+    
+    estrategias[index]()
+        .then(() => {
+            console.log(`✅ Estratégia ${index + 1} concluída`);
+            
+            // Próxima estratégia após 5 segundos
+            setTimeout(() => {
+                executarEstrategias(estrategias, index + 1);
+            }, 5000);
+        })
+        .catch(error => {
+            console.error(`❌ Erro na estratégia ${index + 1}:`, error);
+            
+            // Continuar com próxima estratégia mesmo com erro
+            setTimeout(() => {
+                executarEstrategias(estrategias, index + 1);
+            }, 5000);
+        });
+}
+
+// Versão atualizada das funções de limpeza que retornam Promise
+function limparMensagensAntigas(dias) {
+    return new Promise((resolve, reject) => {
+        console.log(`🧹 Limpando mensagens com mais de ${dias} dias...`);
+        
+        const limiteTimestamp = Date.now() - (dias * 24 * 60 * 60 * 1000);
+        let mensagensApagadas = 0;
+        
+        database.ref('chats').once('value')
+            .then(snapshot => {
+                if (!snapshot.exists()) {
+                    console.log('📭 Nenhuma mensagem para limpar');
+                    resolve();
+                    return;
+                }
+                
+                const updates = {};
+                const chats = snapshot.val();
+                
+                Object.keys(chats).forEach(chatId => {
+                    const messages = chats[chatId].messages;
+                    
+                    if (messages) {
+                        Object.keys(messages).forEach(messageId => {
+                            const message = messages[messageId];
+                            
+                            if (message.timestamp && message.timestamp < limiteTimestamp) {
+                                updates[`chats/${chatId}/messages/${messageId}`] = null;
+                                mensagensApagadas++;
+                            }
+                        });
+                    }
+                });
+                
+                if (mensagensApagadas > 0) {
+                    console.log(`🗑️ ${mensagensApagadas} mensagens marcadas para limpeza`);
+                    return database.ref().update(updates);
+                } else {
+                    console.log('📭 Nenhuma mensagem antiga encontrada');
+                    resolve();
+                }
+            })
+            .then(() => {
+                console.log(`✅ Limpeza de ${dias} dias concluída: ${mensagensApagadas} mensagens`);
+                resolve();
+            })
+            .catch(error => {
+                console.error('❌ Erro na limpeza:', error);
+                reject(error);
+            });
+    });
+}
+
+function limparPorQuantidade(limite) {
+    return new Promise((resolve, reject) => {
+        console.log(`🧹 Limitando para ${limite} mensagens por chat...`);
+        
+        database.ref('chats').once('value')
+            .then(snapshot => {
+                if (!snapshot.exists()) {
+                    resolve();
+                    return;
+                }
+                
+                const updates = {};
+                const chats = snapshot.val();
+                let totalApagadas = 0;
+                
+                Object.keys(chats).forEach(chatId => {
+                    const messages = chats[chatId].messages;
+                    
+                    if (messages && Object.keys(messages).length > limite) {
+                        const messagesArray = Object.keys(messages).map(key => ({
+                            key,
+                            ...messages[key]
+                        }));
+                        
+                        messagesArray.sort((a, b) => a.timestamp - b.timestamp);
+                        const mensagensParaApagar = messagesArray.slice(0, -limite);
+                        
+                        mensagensParaApagar.forEach(msg => {
+                            updates[`chats/${chatId}/messages/${msg.key}`] = null;
+                            totalApagadas++;
+                        });
+                    }
+                });
+                
+                if (totalApagadas > 0) {
+                    console.log(`🗑️ ${totalApagadas} mensagens excedentes marcadas`);
+                    return database.ref().update(updates);
+                } else {
+                    console.log('📭 Nenhuma mensagem excedente encontrada');
+                    resolve();
+                }
+            })
+            .then(() => {
+                console.log(`✅ Limite de ${limite} mensagens aplicado`);
+                resolve();
+            })
+            .catch(error => {
+                console.error('❌ Erro ao limitar mensagens:', error);
+                reject(error);
+            });
+    });
+}
+
+function atualizarPainelEspaco(tamanhoMB) {
+    const spaceStatus = document.getElementById('spaceStatus');
+    const spaceFill = document.getElementById('spaceFill');
+    const spaceText = document.getElementById('spaceText');
+    
+    if (!spaceStatus) return;
+    
+    spaceStatus.style.display = 'block';
+    
+    const percentual = (tamanhoMB / 1024) * 100;
+    
+    // Atualizar barra de progresso
+    spaceFill.style.width = `${percentual}%`;
+    
+    // Mudar cor baseada no uso
+    if (percentual >= 95) {
+        spaceFill.style.background = '#e53e3e';
+    } else if (percentual >= 85) {
+        spaceFill.style.background = '#ed8936'; 
+    } else {
+        spaceFill.style.background = '#48bb78';
+    }
+    
+    // Atualizar texto
+    spaceText.textContent = `${tamanhoMB.toFixed(1)}MB / 1024MB (${percentual.toFixed(1)}%)`;
 }
