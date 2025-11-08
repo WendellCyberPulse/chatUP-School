@@ -8,6 +8,13 @@
     <link rel="shortcut icon" href="./assets/compromisso-social.png" type="image/x-icon">
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('service-worker.js');
+      }
+    </script>
+
 </head>
 <body>
     <div class="container">
@@ -150,4 +157,5 @@
         document.addEventListener('DOMContentLoaded', initLoginTheme);
     </script>
 </body>
+
 </html>
